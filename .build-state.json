@@ -86,6 +86,11 @@
   ],
   "pr_url": "https://github.com/ml-inory/SPADE/pull/15",
   "pr_created_at": "2026-08-18",
+  "pr_merged": {
+    "state": "MERGED",
+    "merged_at": "2026-08-18T07:51:04Z",
+    "merge_commit": "e4d4bd7ea576706cc288ce279e65ee8561dea9e7"
+  },
   "pre_existing_changes": [],
   "assumptions": [
     "Derived from requirement_alignment.assumptions (see above)"
