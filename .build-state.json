@@ -239,6 +239,7 @@
       "gate_rationale": "All 38 tests pass; the demo reproduces the paper's story; HF adapter makes the framework applicable to the paper's backbones. No further iterations planned for this run."
     }
   ],
+  "pr_url": "https://github.com/ml-inory/SPADE/pull/6",
   "pre_existing_changes": [],
   "assumptions": [
     "Derived from requirement_alignment.assumptions (see above)"
