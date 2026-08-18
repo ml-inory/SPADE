@@ -3,11 +3,16 @@
 # Eval: 200 LibriSpeech dev-clean utterances.
 # Expected runtime: data ~15 min, WLI ~45 min, distill ~2x ~70 min in
 # parallel on 2x NVIDIA L4, eval ~10 min.
+#
+# Run via the one-command driver (recommended):
+#   bash scripts/reproduce_cosyvoice2.sh
+# Or run this pipeline directly after downloading the data with
+#   bash scripts/download_cosyvoice2_data.sh
 model_dir: ""
 out_dir: ""
 data:
-  hf_parquet: /data/yangrongzhao/Research/CosyVoice-main/data/train_clean_100/*.parquet
-  eval_hf_parquet: /data/yangrongzhao/Research/CosyVoice-main/data/librispeech_dev_clean.parquet
+  hf_parquet: ""            # defaults to <cosyvoice_root>/data/train_clean_100/*.parquet
+  eval_hf_parquet: ""       # defaults to <cosyvoice_root>/data/librispeech_dev_clean.parquet
   num_utts: 5500
   train_utts: 5500
   eval_utts: 200

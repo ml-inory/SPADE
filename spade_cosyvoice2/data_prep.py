@@ -58,6 +58,16 @@ class DataPrepConfig:
             self.data_root = str(cosyvoice_root() / "data" / "libritts")
         if not self.out_root:
             self.out_root = str(cosyvoice_root() / "data" / "spade")
+        # Smart defaults: if the standard download locations exist, use them
+        # so a beginner can run with zero config edits.
+        if not self.hf_parquet:
+            train_dir = cosyvoice_root() / "data" / "train_clean_100"
+            if (train_dir / "0000.parquet").exists():
+                self.hf_parquet = str(train_dir / "*.parquet")
+        if not self.eval_hf_parquet:
+            eval_file = cosyvoice_root() / "data" / "librispeech_dev_clean.parquet"
+            if eval_file.exists():
+                self.eval_hf_parquet = str(eval_file)
 
 
 def download_part(part: str, root: Path) -> Path:
