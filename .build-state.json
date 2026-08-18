@@ -69,6 +69,16 @@
         "Existing pytest suite still passes"
       ],
       "url": "https://github.com/ml-inory/SPADE/issues/7"
+    },
+    {
+      "number": 8,
+      "title": "feat[cv2-3]: Prune the CosyVoice2 LLM (24 -> 12 Qwen2 layers)",
+      "acceptance_checks": [
+        "spade_cosyvoice2/prune_llm.py prunes llm.pt (24 -> target) via remap_layer_keys and saves a loadable checkpoint + retained-indices json",
+        "load_cosyvoice2_with_llm loads the pruned checkpoint into a shrunken Qwen2 and synthesizes speech (verified on the official checkpoint)",
+        "Unit tests cover layer counting, key remapping, default retention, and checkpoint roundtrip"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/8"
     }
   ],
   "rounds": [
@@ -87,6 +97,20 @@
       "test_command": "python -m pytest -x -q",
       "test_summary": "38 existing tests pass; smoke.py exit 0 with a 6.24s synthesized wav on the official CosyVoice2-0.5B checkpoint (2x L4)",
       "implementation_summary": "Scaffolded spade_cosyvoice2/ with path helpers, a one-shot setup script (CosyVoice upstream + deps + modelscope/HF checkpoint download), shared model/data utils, and a smoke CLI. Worked around a torchaudio 2.9/torchcodec breakage by patching cosyvoice load_wav to soundfile.",
+      "commit_hash": null
+    },
+    {
+      "iteration": 3,
+      "issue": 8,
+      "changed_files": [
+        "spade_cosyvoice2/prune_llm.py",
+        "tests/test_cosyvoice2_prune.py",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "44 tests pass; verified on the official checkpoint: llm.pt 24 -> 12 layers (retained [0,7-16,23], 3.15B->315M params in Qwen2 stack), pruned checkpoint loads and synthesizes speech",
+      "implementation_summary": "prune_llm.py: default even-spaced retention + WLI-driven retained list support, state-dict remap via spade.adapters.hf.remap_layer_keys, and shrink_qwen2_for_llm/load_pruned_llm_state helpers used by load_cosyvoice2_with_llm. Verified end-to-end on the real CosyVoice2-0.5B checkpoint.",
       "commit_hash": null
     }
   ],
