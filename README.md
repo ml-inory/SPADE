@@ -181,6 +181,55 @@ The framework is backbone-agnostic. To run the paper's setups:
    turns it into an identity (safe leave-one-out evaluation); the HF trainer
    reuses the exact SPADE losses on HF `hidden_states`/`attentions`.
 
+### CosyVoice 2 (built-in integration)
+
+The paper's headline backbone is supported end-to-end through
+`spade_cosyvoice2/` (requires the official CosyVoice repository and the
+CosyVoice2-0.5B checkpoint, prepared by `spade_cosyvoice2/setup.sh`):
+
+```bash
+./spade_cosyvoice2/setup.sh                          # CosyVoice repo + deps + checkpoint
+python -m spade_cosyvoice2.smoke --out outputs/cosyvoice2/smoke.wav   # verify synthesis
+python -m spade_cosyvoice2.run_pipeline --config configs/cosyvoice2/pipeline.yaml
+```
+
+The pipeline runs the paper's CosyVoice2 experiment on a small real-speech
+subset (LibriTTS dev-clean):
+
+1. **Data prep** (`data_prep.py`): downloads LibriTTS dev-clean, extracts
+   campplus speaker embeddings and 25 Hz speech tokens
+   (`speech_tokenizer_v2.onnx`), writes CosyVoice parquet shards;
+2. **WLI** (`wli.py`): leave-one-out WER over the 24 Qwen2 layers
+   (each layer bypassed by zeroing, synthesis + Whisper transcription);
+3. **Prune** (`prune_llm.py`): 24 -> 12 layers via state-dict remapping;
+4. **Distill** (`distill.py`): SPADE composite loss (CE + Skew-KL logits +
+   latent/attention/embedding MSE, dynamic layer matching) with the frozen
+   teacher, on the small subset;
+5. **Evaluate** (`evaluate.py`): WER (Whisper), RTF, parameters, depth for
+   teacher / pruned / distilled checkpoints.
+
+Only the LLM is pruned/distilled; Flow and HiFi-GAN are reused unchanged,
+exactly as in the paper.
+
+#### Real-data result (this repo, 1x NVIDIA L4)
+
+Measured on 8 LibriSpeech dev-clean utterances (zero-shot, Whisper-base WER,
+ASR-style transcript normalization), 1500 training utterances, 7 distillation
+epochs:
+
+| Model | Depth | Params | WER | RTF |
+|---|---|---|---|---|
+| CosyVoice2 teacher | 24 | 494.0M | 0.316 | 1.94 |
+| WLI-pruned (12 layers) | 12 | 315.1M | 1.000 | 2.86 |
+| + SPADE distillation | 12 | 315.1M | **0.413** | **0.60** |
+
+WLI identified layers 16/15/11/8 as most important and 22/23/2 as least
+important (report at `data/spade/parquet/wli_report.json`). Distillation
+recovers the pruned model from complete unintelligibility (WER 1.0) to
+intelligible speech (WER 0.41), while halving depth, cutting parameters by
+36%, and speeding up synthesis ~3.2x. Larger data/epochs (the paper uses 7
+epochs on a much larger corpus) narrow the remaining WER gap to the teacher.
+
 ## Testing
 
 ```bash

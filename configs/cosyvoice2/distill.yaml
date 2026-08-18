@@ -1,0 +1,23 @@
+# SPADE distillation of the pruned CosyVoice2 LLM on the small dataset.
+train_list: ""             # filled by run_pipeline (train.data.list)
+llm_pt: ""                 # teacher: <model_dir>/llm.pt
+student_llm_pt: ""         # pruned student checkpoint
+retained: []               # filled from pruning decision
+epochs: 1
+lr: 0.00001
+weight_decay: 0.0
+grad_clip: 5.0
+accum_grad: 2
+alpha: 0.25
+beta: 0.1
+skew_mode: forward
+use_ce: true
+use_logit: true
+use_latent: true
+use_attention: true
+use_embedding: true
+matching: dynamic
+device: auto
+seed: 0
+log_every: 10
+
