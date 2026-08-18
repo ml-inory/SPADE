@@ -1,14 +1,18 @@
 # End-to-end SPADE-on-CosyVoice2: data -> WLI -> prune -> distill -> evaluate.
+# Reproduces the README result (teacher WER 0.32 -> pruned 1.0 -> distilled 0.41,
+# RTF x3.2) with 1500 training utterances and 7 distillation epochs.
+# Expected runtime on 2x NVIDIA L4: data ~5 min, WLI ~45 min, distill ~50 min.
 # Run: python -m spade_cosyvoice2.run_pipeline --config configs/cosyvoice2/pipeline.yaml
-# Expected runtime: data ~5-10 min (download+extract), WLI ~15-20 min,
-# distill ~10-20 min on 2x NVIDIA L4.
 model_dir: ""              # default: <cosyvoice_root>/pretrained_models/CosyVoice2-0.5B
 out_dir: ""                # default: <model_dir>/../spade_outputs
 data:
+  # Fast path: use the LibriSpeech dev-clean parquet (audio bytes).
+  # Set hf_parquet to a local path or URL; otherwise openslr LibriTTS is used.
+  hf_parquet: ""
   part: dev-clean
-  num_utts: 200
-  train_utts: 150
-  num_threads: 8
+  num_utts: 1600
+  train_utts: 1500
+  num_threads: 12
   seed: 0
 wli:
   subset_size: 8
@@ -18,7 +22,7 @@ prune:
   target_layers: 12
   force_keep_first_last: true
 distill:
-  epochs: 1
+  epochs: 7
   lr: 0.00001
   accum_grad: 2
   alpha: 0.25
@@ -30,4 +34,3 @@ eval:
   subset_size: 8
   whisper_model: base
   device: auto
-

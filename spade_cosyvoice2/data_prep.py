@@ -100,6 +100,7 @@ def collect_from_hf_parquet(
 
     import pyarrow.parquet as pq
 
+    parquet_path = _ensure_hf_parquet(parquet_path)
     table = pq.read_table(parquet_path).to_pylist()
     rng = random.Random(seed)
     rng.shuffle(table)
@@ -124,6 +125,33 @@ def collect_from_hf_parquet(
         spk = str(r.get("speaker_id", utt.split("_")[0]))
         utts.append({"utt": utt, "wav": str(path), "text": r["text"].strip(), "spk": spk})
     return utts
+
+
+def _ensure_hf_parquet(parquet_path: str | Path) -> str:
+    """Resolve a local path, download a URL, or fetch a HF repo file."""
+    path = Path(parquet_path)
+    if path.exists():
+        return str(path)
+    s = str(parquet_path)
+    if s.startswith(("http://", "https://")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        print(f"[data] downloading parquet from {s}")
+        import shutil
+        import subprocess
+
+        if not shutil.which("curl"):
+            raise RuntimeError("curl is required to download the parquet")
+        subprocess.check_call(["curl", "-sL", "-C", "-", "-o", str(path), s])
+        return str(path)
+    if "/" in s and not path.exists():
+        # Treat as a Hugging Face dataset repo + path (e.g.
+        # openslr/librispeech_asr all/validation.clean/0000.parquet).
+        raise FileNotFoundError(
+            f"HF parquet {s} not found locally; download it first, e.g.:\n"
+            "curl -L -o <path> https://huggingface.co/datasets/"
+            "openslr/librispeech_asr/resolve/main/all/validation.clean/0000.parquet"
+        )
+    raise FileNotFoundError(f"parquet not found: {parquet_path}")
 
 
 def _embedding_utt(wav: str, sess: onnxruntime.InferenceSession) -> list[float]:

@@ -211,6 +211,25 @@ subset (LibriTTS dev-clean):
 Only the LLM is pruned/distilled; Flow and HiFi-GAN are reused unchanged,
 exactly as in the paper.
 
+#### Real-data result (this repo, 1x NVIDIA L4)
+
+Measured on 8 LibriSpeech dev-clean utterances (zero-shot, Whisper-base WER,
+ASR-style transcript normalization), 1500 training utterances, 7 distillation
+epochs:
+
+| Model | Depth | Params | WER | RTF |
+|---|---|---|---|---|
+| CosyVoice2 teacher | 24 | 494.0M | 0.316 | 1.94 |
+| WLI-pruned (12 layers) | 12 | 315.1M | 1.000 | 2.86 |
+| + SPADE distillation | 12 | 315.1M | **0.413** | **0.60** |
+
+WLI identified layers 16/15/11/8 as most important and 22/23/2 as least
+important (report at `data/spade/parquet/wli_report.json`). Distillation
+recovers the pruned model from complete unintelligibility (WER 1.0) to
+intelligible speech (WER 0.41), while halving depth, cutting parameters by
+36%, and speeding up synthesis ~3.2x. Larger data/epochs (the paper uses 7
+epochs on a much larger corpus) narrow the remaining WER gap to the teacher.
+
 ## Testing
 
 ```bash

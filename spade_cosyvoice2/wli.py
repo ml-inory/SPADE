@@ -22,7 +22,7 @@ from spade_cosyvoice2.model_utils import load_cosyvoice2_with_llm, synthesize
 
 @dataclass
 class WLIConfig:
-    eval_list: str
+    eval_list: str = ""
     subset_size: int = 8
     whisper_model: str = "base"
     model_dir: str = ""
