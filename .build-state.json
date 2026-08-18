@@ -234,7 +234,9 @@
       "test_command": "python -m pytest -x -q",
       "test_summary": "38 passed (HF layer-stack detection, state-dict-remap pruning with weight-copy assertions, zero-and-restore block bypass, WLI wiring via pluggable bypass_fn, HF distillation trainer with teacher frozen / student updated and dynamic targets)",
       "implementation_summary": "Added spade/adapters/hf.py: automatic ModuleList detection (transformer.h / model.layers / ...), prune_hf_layers via state-dict key remapping, bypass_block (zeroing a residual block -> exact identity, restored afterwards) for WLI, and HFDistillTrainer that wraps HF outputs into the SPADE hidden/attention/embedding convention and reuses the composite loss. compute_wli now accepts a pluggable bypass_fn + n_layers for any backbone. Validated with a locally constructed tiny GPT-2 (no downloads).",
-      "commit_hash": null
+      "commit_hash": "3c437b3",
+      "gate_result": "done",
+      "gate_rationale": "All 38 tests pass; the demo reproduces the paper's story; HF adapter makes the framework applicable to the paper's backbones. No further iterations planned for this run."
     }
   ],
   "pre_existing_changes": [],
