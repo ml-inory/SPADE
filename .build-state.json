@@ -79,6 +79,16 @@
         "Unit tests cover layer counting, key remapping, default retention, and checkpoint roundtrip"
       ],
       "url": "https://github.com/ml-inory/SPADE/issues/8"
+    },
+    {
+      "number": 9,
+      "title": "feat[cv2-2]: Data preparation (LibriTTS dev-clean subset -> parquet)",
+      "acceptance_checks": [
+        "spade_cosyvoice2/data_prep.py downloads LibriTTS (openslr), builds wav/text/spk tables, extracts embeddings + speech tokens, writes parquet + train/eval data.list files",
+        "CosyVoice's dataset pipeline can read the parquet and yield padded batches with text_token/speech_token/embedding",
+        "Unit test for utterance collection; existing pytest suite passes"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/9"
     }
   ],
   "rounds": [
@@ -111,6 +121,22 @@
       "test_command": "python -m pytest -x -q",
       "test_summary": "44 tests pass; verified on the official checkpoint: llm.pt 24 -> 12 layers (retained [0,7-16,23], 3.15B->315M params in Qwen2 stack), pruned checkpoint loads and synthesizes speech",
       "implementation_summary": "prune_llm.py: default even-spaced retention + WLI-driven retained list support, state-dict remap via spade.adapters.hf.remap_layer_keys, and shrink_qwen2_for_llm/load_pruned_llm_state helpers used by load_cosyvoice2_with_llm. Verified end-to-end on the real CosyVoice2-0.5B checkpoint.",
+      "commit_hash": null
+    },
+    {
+      "iteration": 2,
+      "issue": 9,
+      "changed_files": [
+        "spade_cosyvoice2/data_prep.py",
+        "spade_cosyvoice2/paths.py",
+        "tests/test_cosyvoice2_data.py",
+        "configs/cosyvoice2/data_prep.yaml",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "45 tests pass; verified data prep on real data: 200 LibriSpeech dev-clean utterances (HF parquet audio bytes) -> flac + campplus embeddings + 25Hz speech tokens -> train(150)/eval(50) parquet; CosyVoice dataset pipeline yields padded batches (text_token 15x14, speech_token 15x65, embeddings 15x192)",
+      "implementation_summary": "data_prep.py now supports an HF-parquet source (openslr/librispeech_asr validation.clean) in addition to openslr LibriTTS tarballs; extracts embeddings and speech tokens with CPU onnxruntime and writes CosyVoice-format parquet + data.list splits. Patched torchaudio.load globally to soundfile (torchcodec is broken in this env), fixing both the frontend and the dataset pipeline.",
       "commit_hash": null
     }
   ],

@@ -1,0 +1,8 @@
+# Small real-speech dataset for SPADE-on-CosyVoice2.
+part: dev-clean            # LibriTTS dev-clean (~54 MB download)
+num_utts: 200              # utterances selected deterministically (seeded)
+train_utts: 150            # first N go to train parquet, rest to eval
+num_threads: 8
+seed: 0
+# data_root / out_root default to <cosyvoice_root>/data/libritts and /spade
+
