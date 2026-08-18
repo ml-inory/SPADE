@@ -108,6 +108,7 @@ class SyntheticTTSDataset(Dataset):
             "labels": torch.tensor(labels, dtype=torch.long),
             "speaker_ids": torch.tensor(speaker, dtype=torch.long),
             "text": text,
+            "cond_len": audio_start,
         }
 
 

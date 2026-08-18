@@ -63,6 +63,17 @@
         "Model forward/generation and data pipeline have passing pytest unit tests"
       ],
       "url": "https://github.com/ml-inory/SPADE/issues/1"
+    },
+    {
+      "number": 2,
+      "title": "feat[2]: WER-based layer importance (WLI) pruning + cosine baseline",
+      "acceptance_checks": [
+        "spade/pruning/ provides compute_wli (leave-one-out WER per layer), compute_cli (mean cosine distance between layer input/output), and layer selection/pruning utilities",
+        "Backbone supports temporarily disabling blocks (leave-one-out) and pruning returns a new student model whose retained blocks copy teacher weights",
+        "WER scorer abstraction: built-in token-codec scorer decoding generated codes to text; optional Whisper-based scorer for real audio",
+        "Pruning + selection + scorer have passing pytest tests"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/2"
     }
   ],
   "rounds": [
@@ -89,6 +100,28 @@
       "test_command": "python -m pytest -x -q",
       "test_summary": "11 passed (model forward/generation/causality/multi-codebook, codec roundtrip, dataset collation, WER basics)",
       "implementation_summary": "Created the spade package with a GPT-style LLM-TTS backbone (causal attention + residual blocks + LM heads, exposing hidden states/attention maps/embedding outputs for distillation) and a data layer with a character tokenizer, an invertible context-dependent synthetic speech codec, and a dataset/collator.",
+      "commit_hash": "2f4cfe2",
+      "gate_result": "continue",
+      "gate_rationale": "Tests passed; assumed user wants the full SPADE implementation (pruning + distillation + CLI + PR) rather than stopping after scaffolding. Recorded as an assumption; user can redirect at any time."
+    },
+    {
+      "iteration": 2,
+      "issue": 2,
+      "changed_files": [
+        "spade/models/llm_tts.py",
+        "spade/data/dataset.py",
+        "spade/evaluation/__init__.py",
+        "spade/evaluation/scorers.py",
+        "spade/evaluation/metrics.py",
+        "spade/pruning/__init__.py",
+        "spade/pruning/wli.py",
+        "tests/test_pruning.py",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "18 passed (WLI leave-one-out + restore, layer selection with boundary forcing, weight-copy pruning, CLI computation, token-codec WER scorer)",
+      "implementation_summary": "Implemented WER-based layer importance (leave-one-out layer bypass scored with WER), cosine-based layer importance baseline, top-k layer selection with optional first/last retention, and a prune_layers utility that builds the student by copying retained teacher blocks. Added TokenCodecWERScorer (generated codes -> text -> WER) and WhisperWERScorer for the real-audio path, plus efficiency metrics.",
       "commit_hash": null
     }
   ],

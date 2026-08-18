@@ -148,6 +148,7 @@ class LLMTTSBackbone(nn.Module):
                 for _ in range(config.num_codebooks)
             ]
         )
+        self._disabled: set[int] = set()
         if config.tie_word_embeddings:
             for head in self.lm_heads:
                 head.weight = self.wte.weight
@@ -175,6 +176,18 @@ class LLMTTSBackbone(nn.Module):
     def set_blocks(self, blocks: nn.ModuleList) -> None:
         """Replace the Transformer block stack (used by pruning)."""
         self.blocks = blocks
+
+    def disable_blocks(self, indices: list[int] | set[int] | tuple[int, ...]) -> None:
+        """Temporarily bypass the given blocks (used for leave-one-out WLI).
+
+        Bypassed blocks are skipped entirely, which -- thanks to the residual
+        structure ``x^l = x^{l-1} + f_l(x^{l-1})`` -- is equivalent to
+        removing them.
+        """
+        self._disabled = set(indices)
+
+    def enable_all_blocks(self) -> None:
+        self._disabled = set()
 
     def forward(
         self,
@@ -215,7 +228,7 @@ class LLMTTSBackbone(nn.Module):
         ).unsqueeze(0)
         if attention_mask is not None:
             # Convert (B, T) 0/1 mask to additive mask.
-            pad = attention_mask.unsqueeze(1).unsqueeze(2)  # (B, 1, 1, T)
+            pad = attention_mask.unsqueeze(1).unsqueeze(2).bool()  # (B, 1, 1, T)
             valid = causal & pad
         else:
             valid = causal
@@ -231,7 +244,9 @@ class LLMTTSBackbone(nn.Module):
 
         hidden_states: list[torch.Tensor] = []
         attentions: list[torch.Tensor] = []
-        for block in self.blocks:
+        for idx, block in enumerate(self.blocks):
+            if idx in self._disabled:
+                continue
             x, attn = block(x, attn_mask, return_attn=return_attentions)
             if return_hidden_states:
                 hidden_states.append(x)
