@@ -183,6 +183,8 @@ The framework is backbone-agnostic. To run the paper's setups:
 
 ### CosyVoice 2 (built-in integration)
 
+> 从零复现请直接看 **[CosyVoice2.md](CosyVoice2.md)**（中文逐步指南 + 一键脚本）。
+
 The paper's headline backbone is supported end-to-end through
 `spade_cosyvoice2/` (requires the official CosyVoice repository and the
 CosyVoice2-0.5B checkpoint, prepared by `spade_cosyvoice2/setup.sh`):
