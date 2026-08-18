@@ -285,6 +285,8 @@ class LLMTTSBackbone(nn.Module):
         self.eval()
         generated = input_ids.clone()
         for _ in range(max_new_tokens):
+            if generated.size(-1) >= self.config.max_position_embeddings:
+                break  # position embedding limit reached
             out = self.forward(generated)
             logits = out["logits"]
             if isinstance(logits, list):

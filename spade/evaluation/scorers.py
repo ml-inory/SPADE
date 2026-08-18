@@ -52,7 +52,7 @@ class TokenCodecWERScorer:
         # Strip EOS if the model produced one before max_new_tokens.
         if self.codec.eos_id in code_ids:
             code_ids = code_ids[: code_ids.index(self.codec.eos_id)]
-        hypothesis = self.codec.decode(code_ids, speaker)
+        hypothesis = self.codec.decode_viterbi(code_ids, speaker)
         return word_error_rate(reference, hypothesis)
 
 
@@ -107,4 +107,3 @@ class WhisperWERScorer:
             waveform, language=self.language, fp16=False
         )["text"]
         return word_error_rate(str(sample["text"]), text)
-

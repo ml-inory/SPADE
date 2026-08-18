@@ -72,8 +72,12 @@ class SyntheticTTSDataset(Dataset):
         speaker = self._speaker(index)
         text_ids = self.tokenizer.encode(text)
 
-        # Audio codes for the utterance (the prediction target).
-        audio_codes = self.codec.encode(text, speaker)
+        # Audio codes for the utterance (the prediction target). The speaker
+        # token lives in the conditioning prefix, so the model never has to
+        # guess a hidden speaker variable during generation.
+        audio_codes = self.codec.encode(
+            text, speaker, add_bos=False, add_eos=True
+        )
 
         prompt_codes: list[int] = []
         if self.use_prompt:
@@ -89,19 +93,28 @@ class SyntheticTTSDataset(Dataset):
                 add_eos=True,
             )
 
-        # Condition: prompt codes (if any) + text tokens + audio codes.
-        input_ids = prompt_codes + text_ids + audio_codes
+        # Condition: prompt codes (if any) + speaker token + text tokens,
+        # then the audio codes to predict.
+        input_ids = (
+            prompt_codes
+            + [self.codec.bos_id, self.codec.speaker_bos_id + speaker]
+            + text_ids
+            + audio_codes
+        )
         if len(input_ids) > self.max_len:
             input_ids = input_ids[: self.max_len]
 
-        # Labels: predict audio codes at their positions; -100 elsewhere.
-        prompt_len = len(prompt_codes)
+        # Labels: position i must predict the *next* token (i+1). For the
+        # audio span [audio_start, audio_end), the predicting positions are
+        # [audio_start - 1, audio_end - 1); the last text position therefore
+        # predicts BOS (the first audio token), as in standard LM training.
+        prompt_len = len(prompt_codes) + 2  # + [BOS, speaker_token]
         text_len = len(text_ids)
         audio_start = min(prompt_len + text_len, len(input_ids))
+        audio_end = min(len(input_ids), audio_start + len(audio_codes))
         labels = [-100] * len(input_ids)
-        for i in range(audio_start, min(len(input_ids), audio_start + len(audio_codes))):
-            labels[i] = input_ids[i]
-        # Keep sequence length consistent: truncation above may cut codes.
+        for i in range(audio_start - 1, audio_end - 1):
+            labels[i] = input_ids[i + 1]
 
         return {
             "input_ids": torch.tensor(input_ids, dtype=torch.long),

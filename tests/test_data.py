@@ -33,6 +33,32 @@ def test_codec_is_context_dependent():
     assert a != c
 
 
+def test_viterbi_decode_is_exact_on_valid_codes():
+    codec = ToySpeechCodec(alphabet=CharTokenizer().alphabet)
+    for text in ["the quick brown fox", "speech synthesis 123", "hello world!"]:
+        for speaker in range(4):
+            codes = codec.encode(text, speaker)
+            assert codec.decode_viterbi(codes, speaker) == text.lower()
+
+
+def test_viterbi_decode_tolerates_isolated_errors():
+    codec = ToySpeechCodec(alphabet=CharTokenizer().alphabet)
+    text = "the quick brown fox jumps"
+    codes = codec.encode(text, speaker=1)
+    # Corrupt the middle code.
+    bad = list(codes)
+    mid = len(bad) // 2
+    bad[mid] = (bad[mid] + 1) % codec.code_vocab_size
+    viterbi = codec.decode_viterbi(bad, speaker=1)
+    exact_bad = codec.decode(bad, speaker=1)
+    # Viterbi keeps the error localized (prefix/suffix preserved) whereas
+    # exact decoding cascades.
+    from spade.metrics import word_error_rate
+
+    assert word_error_rate(text, viterbi) <= word_error_rate(text, exact_bad)
+    assert word_error_rate(text, viterbi) < 1.0
+
+
 def test_dataset_and_collation():
     texts = make_synthetic_texts(8, seed=1)
     tok = CharTokenizer()
@@ -48,6 +74,26 @@ def test_dataset_and_collation():
     assert batch["input_ids"].shape == batch["labels"].shape
     assert batch["attention_mask"].shape == batch["input_ids"].shape
     assert batch["labels"].max() < 512  # sanity: real code ids, not padding
+
+
+def test_label_alignment_next_token():
+    texts = ["the cat sat"]
+    tok = CharTokenizer()
+    codec = ToySpeechCodec(alphabet=tok.alphabet)
+    ds = SyntheticTTSDataset(texts, codec, tok, num_speakers=1, use_prompt=False)
+    item = ds[0]
+    ids = item["input_ids"].tolist()
+    labels = item["labels"].tolist()
+    audio_start = int(item["cond_len"])
+    # Conditioning prefix starts with BOS + speaker token (no prompt here).
+    assert ids[0] == codec.bos_id
+    assert ids[1] == codec.speaker_bos_id + int(item["speaker_ids"])
+    # Each labeled position predicts the following token.
+    for i, lab in enumerate(labels):
+        if lab != -100:
+            assert ids[i + 1] == lab, (i, ids[i + 1], lab)
+    # The last conditioning position predicts the first audio code.
+    assert labels[audio_start - 1] == ids[audio_start]
 
 
 def test_wer_basics():

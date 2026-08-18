@@ -1,0 +1,16 @@
+# WER-based layer importance pruning (8 -> 4 layers).
+# ~30 s on an NVIDIA L4 with eval_subset_size=8.
+target_layers: 4
+eval_subset_size: 8
+force_keep_first_last: true
+compute_cli: true
+max_new_tokens: 100
+device: auto
+data:
+  num_samples: 3000
+  num_eval_samples: 24
+  num_speakers: 4
+  use_prompt: false
+  max_words: 8
+  max_len: 192
+  seed: 0

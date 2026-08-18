@@ -85,6 +85,18 @@
         "Losses, matching, and trainer have passing pytest tests (including teacher frozen / student updated)"
       ],
       "url": "https://github.com/ml-inory/SPADE/issues/3"
+    },
+    {
+      "number": 4,
+      "title": "feat[4]: CLI stages, end-to-end pipeline, README, and smoke test",
+      "acceptance_checks": [
+        "Stage CLIs exist: python -m spade.train / spade.prune / spade.distill_cli / spade.evaluate / spade.pipeline",
+        "YAML configs for the built-in benchmark + a tiny smoke configuration",
+        "Pipeline produces a JSON report (WLI/retained indices, WER before/after distillation, params/depth/RTF comparison)",
+        "README documents the method, repo layout, quickstart, and extension points",
+        "End-to-end smoke test (train -> WLI -> prune -> distill -> evaluate) passes under pytest"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/4"
     }
   ],
   "rounds": [
@@ -151,6 +163,47 @@
       "test_summary": "27 passed (skew-KL forward/reverse/masking, MSE losses, composite weights, dynamic/static matching, distill loss components, trainer updates student and freezes teacher, ablation flags)",
       "implementation_summary": "Implemented the paper's composite distillation loss (alpha*CE + (1-alpha)/4 * (skew-KL logit + latent MSE + attention MSE + embedding MSE), alpha=0.25) with DistiLLM's skew KL (beta=0.1, forward/reverse), dynamic teacher-layer matching (target = last teacher layer before the next retained layer) plus static ablation, and a DistillTrainer that freezes the teacher and returns per-component metrics.",
       "commit_hash": null
+    },
+    {
+      "iteration": 4,
+      "issue": 4,
+      "changed_files": [
+        "configs/teacher.yaml",
+        "configs/wli.yaml",
+        "configs/distill.yaml",
+        "configs/smoke.yaml",
+        "configs/demo.yaml",
+        "spade/config_utils.py",
+        "spade/checkpoints.py",
+        "spade/train.py",
+        "spade/prune.py",
+        "spade/distill_cli.py",
+        "spade/evaluate.py",
+        "spade/pipeline.py",
+        "spade/data/dataset.py",
+        "spade/data/toy_codec.py",
+        "spade/evaluation/scorers.py",
+        "spade/models/llm_tts.py",
+        "tests/test_pipeline.py",
+        "tests/test_data.py",
+        "README.md",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "32 passed including the end-to-end smoke pipeline; verified the medium demo config separately on GPU: teacher WER 0.272 -> pruned (4/8 layers, -47% params) WER 0.778 -> distilled WER 0.148, RTF x1.9",
+      "implementation_summary": "Wired all stages into CLI entry points (train / prune / distill_cli / evaluate / pipeline) with YAML configs, checkpoints, and an end-to-end JSON report; rewrote the README. During validation, fixed three benchmark issues: next-token label alignment, speaker conditioning (hidden speaker variable caused generation collapse), and Viterbi maximum-consistency decoding (isolated code errors no longer cascade). The medium demo reproduces the paper's story (WLI ranks boundary layers most important; pruning hurts WER; distillation recovers and exceeds it).",
+      "commit_hash": null,
+      "demo_validation": {
+        "teacher_wer": 0.2717,
+        "pruned_wer": 0.7776,
+        "distilled_wer": 0.1481,
+        "depth_ratio": 2.0,
+        "param_ratio": 1.878,
+        "rtf_ratio": 1.813,
+        "retained_indices": [0, 1, 2, 7],
+        "dynamic_targets": [0, 1, 6, 7]
+      }
     }
   ],
   "pre_existing_changes": [],

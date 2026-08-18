@@ -13,16 +13,17 @@ The mapping is intentionally *not* a trivial lookup:
 
     code_t = base(char_t) + jitter(speaker, char_{t-1}, char_t, t)
 
-where ``jitter`` is a deterministic pseudo-random function of the speaker id,
-the previous character, the current character, and the absolute position.
+where ``jitter`` is a deterministic function of the speaker id, the previous
+character, the current character, and the absolute position. It is chosen to
+be a *learnable* linear combination of those features (not a random hash),
+so a small Transformer can generalize from the training texts to unseen
+ones -- while still being context-, speaker-, and position-dependent.
 Character bases are spaced ``jitter_range`` apart, so for a fixed previous
 character each character maps to a *distinct* code; the decoder replays the
 same function causally and recovers the text exactly.
 """
 
 from __future__ import annotations
-
-import hashlib
 
 
 class ToySpeechCodec:
@@ -59,9 +60,13 @@ class ToySpeechCodec:
         self._chars = list(alphabet)
 
     def _jitter(self, speaker: int, prev_char: str, char: str, position: int) -> int:
-        key = f"{speaker}|{prev_char}|{char}|{position}"
-        digest = hashlib.md5(key.encode("utf-8")).hexdigest()
-        return int(digest[:8], 16) % self.jitter_range
+        # Learnable smooth mapping: linear combination of speaker id,
+        # previous-char id, current-char id, and position, reduced mod J.
+        prev_id = self._char_to_base.get(prev_char, 0)
+        char_id = self._char_to_base.get(char, 0)
+        return (
+            speaker * 2 + prev_id * 3 + char_id * 5 + position
+        ) % self.jitter_range
 
     def encode(
         self,
@@ -126,3 +131,66 @@ class ToySpeechCodec:
             prev_char = found
             position += 1
         return "".join(out).strip()
+
+    def decode_viterbi(
+        self,
+        codes: list[int] | tuple[int, ...],
+        speaker: int = 0,
+        prev_char: str = "\x00",
+        start_position: int = 0,
+    ) -> str:
+        """ASR-style maximum-consistency decoding (Viterbi).
+
+        The exact decoder (:meth:`decode`) is brittle: one wrong code changes
+        the previous character, which cascades into the next jitter term.
+        Real systems evaluate intelligibility with an ASR model that tolerates
+        such errors, so this decoder finds the character sequence that is
+        *maximally consistent* with all code tokens under the codec's
+        context-dependent jitter function -- analogous to decoding with
+        language constraints. A single corrupted code only degrades its own
+        character instead of derailing the whole utterance.
+        """
+        seq: list[int] = []
+        for code in codes:
+            code = int(code)
+            if code in (self.bos_id, self.pad_id):
+                continue
+            if code == self.eos_id:
+                break
+            if code >= self.speaker_bos_id:
+                continue
+            seq.append(code)
+        if not seq:
+            return ""
+
+        chars = self._chars
+        n_chars = len(chars)
+        n = len(seq)
+        neg = -1e9
+
+        def consistent(prev: str, cur: str, code: int, pos: int) -> float:
+            base = self._char_to_base[cur]
+            return 1.0 if (base + self._jitter(speaker, prev, cur, pos)) == code else neg
+
+        best = [consistent(prev_char, c, seq[0], start_position) for c in chars]
+        back: list[list[int]] = [[-1] * n for _ in range(n_chars)]
+
+        for t in range(1, n):
+            new: list[float] = []
+            for j, cur in enumerate(chars):
+                vals = [
+                    best[i]
+                    + consistent(chars[i], cur, seq[t], start_position + t)
+                    for i in range(n_chars)
+                ]
+                j_star = max(range(n_chars), key=lambda i: vals[i])
+                new.append(vals[j_star])
+                back[j][t] = j_star
+            best = new
+
+        j = max(range(n_chars), key=lambda i: best[i])
+        path: list[str] = []
+        for t in range(n - 1, -1, -1):
+            path.append(chars[j])
+            j = back[j][t]
+        return "".join(reversed(path)).strip()
