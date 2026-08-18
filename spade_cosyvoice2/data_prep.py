@@ -43,8 +43,11 @@ OPENS_LR_BASE = "https://www.openslr.org/resources/60"
 class DataPrepConfig:
     part: str = "dev-clean"
     hf_parquet: str = ""       # optional: openslr/librispeech_asr parquet path/URL
+    eval_hf_parquet: str = ""   # optional separate eval source (defaults to hf_parquet)
     num_utts: int = 200
     train_utts: int = 150
+    eval_utts: int = 50
+    train_shards: int = 1       # split train parquet into N shards (per-GPU data)
     num_threads: int = 8
     seed: int = 0
     data_root: str = ""  # default: <cosyvoice_root>/data/libritts
@@ -86,7 +89,7 @@ def collect_utterances(src_dir: Path) -> list[dict[str, str]]:
 
 
 def collect_from_hf_parquet(
-    parquet_path: str | Path,
+    parquet_paths: str | Path | list,
     out_root: Path,
     num_utts: int,
     seed: int,
@@ -100,11 +103,14 @@ def collect_from_hf_parquet(
 
     import pyarrow.parquet as pq
 
-    parquet_path = _ensure_hf_parquet(parquet_path)
-    table = pq.read_table(parquet_path).to_pylist()
+    paths = _expand_parquet_paths(parquet_paths)
+    rows = []
+    for p in paths:
+        table = pq.read_table(_ensure_hf_parquet(p)).to_pylist()
+        rows.extend(table)
     rng = random.Random(seed)
-    rng.shuffle(table)
-    rows = table[:num_utts]
+    rng.shuffle(rows)
+    rows = rows[:num_utts]
     audio_dir = out_root / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     utts: list[dict[str, str]] = []
@@ -125,6 +131,21 @@ def collect_from_hf_parquet(
         spk = str(r.get("speaker_id", utt.split("_")[0]))
         utts.append({"utt": utt, "wav": str(path), "text": r["text"].strip(), "spk": spk})
     return utts
+
+
+def _expand_parquet_paths(spec: str | Path | list) -> list[str]:
+    """Expand a parquet spec into a list of local paths."""
+    if isinstance(spec, (list, tuple)):
+        return [_ensure_hf_parquet(s) for s in spec]
+    s = str(spec)
+    if any(ch in s for ch in "*?["):
+        import glob
+
+        matches = sorted(glob.glob(s))
+        if not matches:
+            raise FileNotFoundError(f"no parquet files match {s}")
+        return matches
+    return [_ensure_hf_parquet(s)]
 
 
 def _ensure_hf_parquet(parquet_path: str | Path) -> str:
@@ -214,23 +235,31 @@ def prepare(cfg: DataPrepConfig) -> dict[str, Any]:
         utts = utts[: cfg.num_utts]
         print(f"[data] selected {len(utts)} utterances from {cfg.part}")
 
+    eval_utts: list[dict[str, str]] = []
+    if cfg.eval_hf_parquet:
+        eval_utts = collect_from_hf_parquet(
+            cfg.eval_hf_parquet, out, cfg.eval_utts, cfg.seed + 1
+        )
+        print(f"[data] loaded {len(eval_utts)} eval utterances from {cfg.eval_hf_parquet}")
+    all_utts = utts + eval_utts
+
     campplus = _make_onnx(model_dir / "campplus.onnx", cfg.num_threads)
     tokenizer = _make_onnx(model_dir / "speech_tokenizer_v2.onnx", cfg.num_threads)
 
     utt2embedding: dict[str, list[float]] = {}
     with ThreadPoolExecutor(max_workers=cfg.num_threads) as pool:
-        futs = {pool.submit(_embedding_utt, u["wav"], campplus): u for u in utts}
+        futs = {pool.submit(_embedding_utt, u["wav"], campplus): u for u in all_utts}
         for fut in tqdm(as_completed(futs), total=len(futs), desc="embeddings"):
             utt2embedding[futs[fut]["utt"]] = fut.result()
 
     utt2token: dict[str, list[int]] = {}
     with ThreadPoolExecutor(max_workers=cfg.num_threads) as pool:
-        futs = {pool.submit(_speech_token_utt, u["wav"], tokenizer): u for u in utts}
+        futs = {pool.submit(_speech_token_utt, u["wav"], tokenizer): u for u in all_utts}
         for fut in tqdm(as_completed(futs), total=len(futs), desc="speech tokens"):
             utt2token[futs[fut]["utt"]] = fut.result()
 
     spk2emb: dict[str, list[float]] = {}
-    for u in utts:
+    for u in all_utts:
         emb = utt2embedding[u["utt"]]
         spk2emb.setdefault(u["spk"], []).append(emb)
     spk2embedding = {k: np.mean(v, axis=0).tolist() for k, v in spk2emb.items()}
@@ -246,23 +275,46 @@ def prepare(cfg: DataPrepConfig) -> dict[str, Any]:
             "spk_embedding": spk2embedding[u["spk"]],
             "speech_token": utt2token[u["utt"]],
         }
-        for u in utts
+        for u in all_utts
     ]
     parquet_dir = out / "parquet"
     parquet_dir.mkdir(parents=True, exist_ok=True)
     train_rows = rows[: cfg.train_utts]
-    eval_rows = rows[cfg.train_utts :]
-    for name, part_rows in (("train", train_rows), ("eval", eval_rows)):
-        path = parquet_dir / f"{name}.parquet"
-        pq.write_table(pa.Table.from_pandas(pd.DataFrame(part_rows)), path)
-        (parquet_dir / f"{name}.data.list").write_text(f"{path}\n")
-        print(f"[data] wrote {path} ({len(part_rows)} utts)")
+    if eval_utts:
+        eval_rows = rows[len(utts) :]
+    else:
+        eval_rows = rows[cfg.train_utts :]
+
+    train_list_paths: list[str] = []
+    if cfg.train_shards > 1:
+        for shard in range(cfg.train_shards):
+            shard_rows = train_rows[shard :: cfg.train_shards]
+            path = parquet_dir / f"train_shard{shard}.parquet"
+            pq.write_table(pa.Table.from_pandas(pd.DataFrame(shard_rows)), path)
+            (parquet_dir / f"train_shard{shard}.data.list").write_text(f"{path}\n")
+            train_list_paths.append(str(path))
+            print(f"[data] wrote {path} ({len(shard_rows)} utts)")
+    else:
+        path = parquet_dir / "train.parquet"
+        pq.write_table(pa.Table.from_pandas(pd.DataFrame(train_rows)), path)
+        train_list_paths.append(str(path))
+        print(f"[data] wrote {path} ({len(train_rows)} utts)")
+    (parquet_dir / "train.data.list").write_text("\n".join(train_list_paths) + "\n")
+
+    eval_path = parquet_dir / "eval.parquet"
+    pq.write_table(pa.Table.from_pandas(pd.DataFrame(eval_rows)), eval_path)
+    (parquet_dir / "eval.data.list").write_text(f"{eval_path}\n")
+    print(f"[data] wrote {eval_path} ({len(eval_rows)} utts)")
     meta = {
         "part": cfg.part,
         "num_utts": len(utts),
         "train_utts": len(train_rows),
         "eval_utts": len(eval_rows),
         "train_list": str(parquet_dir / "train.data.list"),
+        "train_shard_lists": [
+            str(parquet_dir / f"train_shard{s}.data.list")
+            for s in range(cfg.train_shards)
+        ],
         "eval_list": str(parquet_dir / "eval.data.list"),
         "parquet_dir": str(parquet_dir),
     }

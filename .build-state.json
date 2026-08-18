@@ -1,236 +1,79 @@
 {
-  "goal": "Apply SPADE to the real CosyVoice 2 (0.5B) LLM-TTS backbone: WER-based layer importance (WLI) pruning of its 24-layer Qwen2 LLM plus adaptive multi-level distillation recovery on a small real-audio dataset, with Whisper-WER / RTF / parameter evaluation.",
-  "stack": "python (torch 2.9 + 2x NVIDIA L4 24GB; CosyVoice upstream repo + CosyVoice2-0.5B checkpoint)",
+  "goal": "Scale up SPADE-on-CosyVoice2 distillation training from 1500 to 5500 LibriSpeech train-clean-100 utterances: 2-GPU sharded training (7 epochs x 2 shards) + checkpoint averaging, evaluated on 200 dev-clean utterances, aiming to improve distilled WER below 0.413 toward the teacher's 0.316.",
+  "stack": "python (torch 2.9 + 2x NVIDIA L4 24GB; CosyVoice upstream + CosyVoice2-0.5B checkpoint)",
   "base_branch": "main",
-  "branch": "feat/build-cosyvoice2-20260818",
-  "iteration": 1,
+  "branch": "feat/cosyvoice2-scale-data-20260818",
+  "iteration": 7,
   "validation_command": "python -m pytest -x -q",
   "requirement_alignment": {
-    "source": "Derived from user request ('先做CosyVoice2') + the SPADE paper (CosyVoice2 rows of Table 1: 24 -> 12/9 layers) + inspection of the official CosyVoice repo (Qwen2LM wraps Qwen2ForCausalLM; llm.pt/flow.pt/hift.pt checkpoint; parquet data pipeline).",
-    "goal": "Runnable SPADE-on-CosyVoice2 integration: load the official checkpoint, compute WLI over LLM layers, prune 24->12, distill with the SPADE composite loss on a small real dataset, and evaluate WER/RTF/params before and after.",
+    "source": "User request ('加大数据量') following the merged SPADE-on-CosyVoice2 PR; prior result: 1500 train utts / 7 epochs -> distilled WER 0.413 vs teacher 0.316.",
+    "goal": "Increase distillation data ~3.7x (1500 -> 5500 utterances) and improve the distilled model's WER.",
     "non_goals": [
-      "Full reproduction of the paper's 7-epoch LibriTTS-scale run (limited to a small demo subset here)",
-      "DPO / GRPO, streaming inference, TRT/JIT export, CosyVoice 3",
-      "Pruning flow/hift (paper prunes only the LLM backbone)"
+      "Full train-clean-100 (100h) scale",
+      "Re-running WLI (reuse the existing WLI-based pruning decision [0,1,4,7,8,10,11,12,15,16,19,23])"
     ],
     "user_visible_behavior": [
-      "Setup script that prepares the CosyVoice repo, Python deps, and pretrained checkpoint",
-      "CLI stages: prepare-data, prune-llm, wli, distill, evaluate (under spade_cosyvoice2/)",
-      "WLI report for all 24 LLM layers + pruned checkpoint + distilled checkpoint",
-      "README section documenting the CosyVoice2 pipeline"
+      "data_prep supports multi-parquet train sources, a separate eval source, and train sharding",
+      "Checkpoint averaging utility for the two shard runs",
+      "Updated real-data result in README"
     ],
     "constraints": [
-      "Must not modify the upstream CosyVoice repo; integration lives in the SPADE repo and imports CosyVoice via PYTHONPATH",
-      "Keep demo data small (LibriTTS dev-clean subset, ~54MB) so the whole flow runs on 2x L4",
-      "Pruning touches only the Qwen2 layer stack; all other LLM modules (text encoder, embeddings, decoder) are copied"
+      "Use both L4 GPUs (shard-parallel training, then average, avoiding DDP sync complexity)",
+      "Same hyperparameters as the proven run (lr 1e-5, accum 2, alpha 0.25, dynamic matching, bf16 AMP)",
+      "Eval on dev-clean (200 utterances) kept separate from training data"
     ],
     "risks": [
-      "CosyVoice upstream code/API drift vs the paper's version (pinned at download time)",
-      "Speech-tokenizer / campplus onnx runtime issues (onnxruntime CPU/GPU providers)",
-      "WLI cost: 24 layers x eval subset x (TTS synth + Whisper) -- controlled via small eval subset",
-      "Model download from hf-mirror was failing; using modelscope (verified ~2MB/s)"
+      "~1 hour per shard on 2 GPUs; long-running jobs need periodic checkpoints + resume (already implemented)",
+      "Download of train-clean-100 parquet was flaky via proxy; resolved with sequential curl",
+      "Checkpoint averaging assumes identical state-dict key sets (both from the same pruned init)"
     ],
     "acceptance_checks": [
-      "python -m pytest -x -q still passes (existing suite)",
-      "Zero-shot inference synthesizes audio with the official checkpoint",
-      "Pruned 12-layer LLM loads and synthesizes; params/depth reduced",
-      "WLI report computed over the 24 LLM layers on an eval subset",
-      "Distillation improves WER vs the pruned model on the eval subset",
-      "README documents the CosyVoice2 flow"
+      "python -m pytest -x -q passes",
+      "Both shard runs complete 7 epochs",
+      "Averaged checkpoint evaluates with WER < 0.413 (better than the 1500-utt run) on the dev-clean eval subset",
+      "README updated with the scaled result"
     ],
-    "validation_approach": "Stage-level runs on the real checkpoint + existing pytest suite; final numbers recorded in a report JSON",
-    "first_iteration_scope": "spade_cosyvoice2/ package skeleton + setup script + docs; verify checkpoint loads and zero-shot inference works",
+    "validation_approach": "Per-shard loss logs + final Whisper-WER evaluation of teacher/pruned/averaged-distilled on the eval subset",
+    "first_iteration_scope": "Data sharding + averaging utilities + configs; launch the two training runs",
     "follow_up_iterations": [
-      "Data prep (LibriTTS dev-clean -> parquet with embeddings + speech tokens)",
-      "LLM pruning (24->12) via state-dict remap + inference check",
-      "WLI computation on the real model",
-      "SPADE distillation training + evaluation",
-      "End-to-end runner + README + PR"
+      "Average checkpoints, evaluate, update README, PR"
     ],
     "assumptions": [
-      "User wants the paper's CosyVoice2 experiment (LLM depth pruning + distillation) runnable in this environment",
-      "Prune only the LLM Qwen2 layers; flow/hift untouched",
-      "Small real dataset (LibriTTS dev-clean subset) is acceptable for a demo run; scaling knobs documented",
-      "WLI uses Whisper ASR WER on synthesized audio, per the paper",
-      "GitHub issues/PRs on ml-inory/SPADE are authorized (previous run established)"
+      "Reuse the existing WLI pruning decision (no re-run of the 45-minute WLI)",
+      "Two shards trained independently then averaged is an acceptable approximation of training on the full 5500-utterance set (mirrors the paper's checkpoint averaging)"
     ],
-    "open_questions": [
-      "Target depth 12 vs 9 (paper reports both) -- default 12, configurable"
-    ]
+    "open_questions": []
   },
   "issues": [
     {
-      "number": 7,
-      "title": "feat[cv2-1]: CosyVoice2 integration skeleton, setup script, and smoke inference",
+      "number": 14,
+      "title": "feat[cv2-7]: Scale up distillation data (5500 train utterances, 2-GPU sharded training + checkpoint averaging)",
       "acceptance_checks": [
-        "spade_cosyvoice2/ package exists with path/config helpers",
-        "setup.sh prepares CosyVoice upstream, Python deps, and downloads CosyVoice2-0.5B (modelscope, with HF fallback)",
-        "smoke.py loads CosyVoice2 and synthesizes one zero-shot utterance to a wav (exit 0)",
-        "Existing pytest suite still passes"
+        "data_prep supports multi-parquet train sources + separate eval source + train sharding",
+        "Two 7-epoch distillation runs (shard0/shard1) complete on 2 GPUs",
+        "Checkpoint averaging produces the final model",
+        "Eval WER improves vs the 1500-utterance result (0.413) with teacher baseline 0.316"
       ],
-      "url": "https://github.com/ml-inory/SPADE/issues/7"
-    },
-    {
-      "number": 8,
-      "title": "feat[cv2-3]: Prune the CosyVoice2 LLM (24 -> 12 Qwen2 layers)",
-      "acceptance_checks": [
-        "spade_cosyvoice2/prune_llm.py prunes llm.pt (24 -> target) via remap_layer_keys and saves a loadable checkpoint + retained-indices json",
-        "load_cosyvoice2_with_llm loads the pruned checkpoint into a shrunken Qwen2 and synthesizes speech (verified on the official checkpoint)",
-        "Unit tests cover layer counting, key remapping, default retention, and checkpoint roundtrip"
-      ],
-      "url": "https://github.com/ml-inory/SPADE/issues/8"
-    },
-    {
-      "number": 9,
-      "title": "feat[cv2-2]: Data preparation (LibriTTS dev-clean subset -> parquet)",
-      "acceptance_checks": [
-        "spade_cosyvoice2/data_prep.py downloads LibriTTS (openslr), builds wav/text/spk tables, extracts embeddings + speech tokens, writes parquet + train/eval data.list files",
-        "CosyVoice's dataset pipeline can read the parquet and yield padded batches with text_token/speech_token/embedding",
-        "Unit test for utterance collection; existing pytest suite passes"
-      ],
-      "url": "https://github.com/ml-inory/SPADE/issues/9"
-    },
-    {
-      "number": 10,
-      "title": "feat[cv2-4]: WER-based layer importance (WLI) on the CosyVoice2 LLM",
-      "acceptance_checks": [
-        "spade_cosyvoice2/wli.py bypasses each LLM layer (zeroing via spade.adapters.hf.bypass_block), synthesizes eval utterances zero-shot, transcribes with Whisper, and reports per-layer WER",
-        "WLI report JSON written next to the eval list",
-        "Layers restored after each leave-one-out run"
-      ],
-      "url": "https://github.com/ml-inory/SPADE/issues/10"
-    },
-    {
-      "number": 11,
-      "title": "feat[cv2-5]: SPADE distillation training + evaluation on CosyVoice2",
-      "acceptance_checks": [
-        "spade_cosyvoice2/distill.py trains the pruned student against the frozen teacher with the SPADE loss and saves a CosyVoice-loadable checkpoint",
-        "spade_cosyvoice2/evaluate.py reports WER (Whisper), RTF, params, depth",
-        "Distilled model WER recovers substantially vs the pruned model (verified on real data)"
-      ],
-      "url": "https://github.com/ml-inory/SPADE/issues/11"
-    },
-    {
-      "number": 12,
-      "title": "feat[cv2-6]: End-to-end pipeline wiring, real-data results, config defaults",
-      "acceptance_checks": [
-        "python -m spade_cosyvoice2.run_pipeline runs data -> WLI -> prune -> distill -> evaluate and writes pipeline_report.json",
-        "README documents the CosyVoice2 flow and the real-data result table",
-        "configs/cosyvoice2/pipeline.yaml defaults reproduce the reported result (1500 train / 7 epochs)",
-        "Existing pytest suite passes"
-      ],
-      "url": "https://github.com/ml-inory/SPADE/issues/12"
+      "url": "https://github.com/ml-inory/SPADE/issues/14"
     }
   ],
   "rounds": [
     {
-      "iteration": 1,
-      "issue": 7,
-      "changed_files": [
-        "spade_cosyvoice2/__init__.py",
-        "spade_cosyvoice2/paths.py",
-        "spade_cosyvoice2/setup.sh",
-        "spade_cosyvoice2/smoke.py",
-        "spade_cosyvoice2/model_utils.py",
-        ".build-state.json"
-      ],
-      "test_status": "pass",
-      "test_command": "python -m pytest -x -q",
-      "test_summary": "38 existing tests pass; smoke.py exit 0 with a 6.24s synthesized wav on the official CosyVoice2-0.5B checkpoint (2x L4)",
-      "implementation_summary": "Scaffolded spade_cosyvoice2/ with path helpers, a one-shot setup script (CosyVoice upstream + deps + modelscope/HF checkpoint download), shared model/data utils, and a smoke CLI. Worked around a torchaudio 2.9/torchcodec breakage by patching cosyvoice load_wav to soundfile.",
-      "commit_hash": null
-    },
-    {
-      "iteration": 3,
-      "issue": 8,
-      "changed_files": [
-        "spade_cosyvoice2/prune_llm.py",
-        "tests/test_cosyvoice2_prune.py",
-        ".build-state.json"
-      ],
-      "test_status": "pass",
-      "test_command": "python -m pytest -x -q",
-      "test_summary": "44 tests pass; verified on the official checkpoint: llm.pt 24 -> 12 layers (retained [0,7-16,23], 3.15B->315M params in Qwen2 stack), pruned checkpoint loads and synthesizes speech",
-      "implementation_summary": "prune_llm.py: default even-spaced retention + WLI-driven retained list support, state-dict remap via spade.adapters.hf.remap_layer_keys, and shrink_qwen2_for_llm/load_pruned_llm_state helpers used by load_cosyvoice2_with_llm. Verified end-to-end on the real CosyVoice2-0.5B checkpoint.",
-      "commit_hash": null
-    },
-    {
-      "iteration": 2,
-      "issue": 9,
+      "iteration": 7,
+      "issue": 14,
       "changed_files": [
         "spade_cosyvoice2/data_prep.py",
-        "spade_cosyvoice2/paths.py",
-        "tests/test_cosyvoice2_data.py",
-        "configs/cosyvoice2/data_prep.yaml",
+        "spade_cosyvoice2/average_checkpoints.py",
+        "configs/cosyvoice2/pipeline_scale.yaml",
         ".build-state.json"
       ],
       "test_status": "pass",
       "test_command": "python -m pytest -x -q",
-      "test_summary": "45 tests pass; verified data prep on real data: 200 LibriSpeech dev-clean utterances (HF parquet audio bytes) -> flac + campplus embeddings + 25Hz speech tokens -> train(150)/eval(50) parquet; CosyVoice dataset pipeline yields padded batches (text_token 15x14, speech_token 15x65, embeddings 15x192)",
-      "implementation_summary": "data_prep.py now supports an HF-parquet source (openslr/librispeech_asr validation.clean) in addition to openslr LibriTTS tarballs; extracts embeddings and speech tokens with CPU onnxruntime and writes CosyVoice-format parquet + data.list splits. Patched torchaudio.load globally to soundfile (torchcodec is broken in this env), fixing both the frontend and the dataset pipeline.",
+      "test_summary": "45 tests pass; data prep for the scaled run complete (5500 train in 2 shards of 2750 + 200 eval); both 7-epoch shard runs launched on 2x L4",
+      "implementation_summary": "data_prep now supports multi-parquet/glob train sources, a separate eval parquet, and train_shards (per-GPU shard parquets + lists); added average_checkpoints.py for checkpoint averaging; added configs/cosyvoice2/pipeline_scale.yaml.",
       "commit_hash": null
-    },
-    {
-      "iteration": 4,
-      "issue": 10,
-      "changed_files": [
-        "spade_cosyvoice2/wli.py",
-        "configs/cosyvoice2/wli.yaml",
-        ".build-state.json"
-      ],
-      "test_status": "pass",
-      "test_command": "python -m pytest -x -q",
-      "test_summary": "45 tests pass; WLI computed on the real CosyVoice2 LLM over 8 LibriSpeech dev-clean eval utterances (24 layers, ~45 min on 1x L4): top layers 16(1.438),15(1.397),11(1.265),8(1.156); bottom 22(0.354),23(0.367),2(0.419)",
-      "implementation_summary": "wli.py: leave-one-out WER per Qwen2 layer (bypass_block zeroing -> zero-shot synthesis -> Whisper base transcription -> word_error_rate), report JSON next to the eval list, layers restored after each run. Verified on the official checkpoint.",
-      "commit_hash": null
-    },
-    {
-      "iteration": 5,
-      "issue": 11,
-      "changed_files": [
-        "spade_cosyvoice2/distill.py",
-        "spade_cosyvoice2/evaluate.py",
-        "spade_cosyvoice2/run_pipeline.py",
-        "spade_cosyvoice2/model_utils.py",
-        "spade_cosyvoice2/wli.py",
-        "configs/cosyvoice2/distill.yaml",
-        "configs/cosyvoice2/pipeline.yaml",
-        "README.md",
-        ".build-state.json"
-      ],
-      "test_status": "pass",
-      "test_command": "python -m pytest -x -q",
-      "test_summary": "45 tests pass; real-data distillation result on 8 LibriSpeech dev-clean eval utterances (1500 train utts, 7 epochs, bf16 on 1x L4): teacher WER 0.3164 / RTF 1.94 / 494M params / 24 layers -> pruned (WLI top-12) WER 1.0 -> distilled WER 0.4127 / RTF 0.60 / 315M params / 12 layers",
-      "implementation_summary": "distill.py: SPADE composite loss training (teacher frozen, dynamic matching, per-component losses) with bf16 AMP, periodic checkpoints and resume; evaluate.py: Whisper WER (with ASR-style transcript normalization), RTF, params, depth. Fixed shared-config deepcopy issue in build_llm. Verified end-to-end on the official CosyVoice2 checkpoint.",
-      "commit_hash": null
-    },
-    {
-      "iteration": 6,
-      "issue": 12,
-      "changed_files": [
-        "spade_cosyvoice2/run_pipeline.py",
-        "spade_cosyvoice2/data_prep.py",
-        "spade_cosyvoice2/wli.py",
-        "configs/cosyvoice2/pipeline.yaml",
-        "README.md",
-        ".build-state.json"
-      ],
-      "test_status": "pass",
-      "test_command": "python -m pytest -x -q",
-      "test_summary": "45 tests pass; mini end-to-end pipeline verified (200 utts, WLI subset 1, prune 24->12, 1 distill epoch, eval) and wrote pipeline_report.json",
-      "implementation_summary": "Verified the full run_pipeline wiring end-to-end (data -> WLI -> prune -> distill -> evaluate); set pipeline.yaml defaults to the proven configuration (1600 utts / 1500 train / 7 epochs); documented the real-data result table in README; data_prep can auto-download the HF parquet from a URL.",
-      "commit_hash": null,
-      "gate_result": "done",
-      "gate_rationale": "All iterations complete: environment + smoke, data prep, WLI pruning, distillation, evaluation, end-to-end pipeline. Real-data result: teacher WER 0.32 -> pruned 1.0 -> distilled 0.41, RTF x3.2."
     }
   ],
-  "pr_url": "https://github.com/ml-inory/SPADE/pull/13",
-  "pr_created_at": "2026-08-18",
-  "pr_merged": {
-    "state": "MERGED",
-    "merged_at": "2026-08-18T06:18:29Z",
-    "merge_commit": "c7b1ce7ce270d3bd4f550d03d9f31e41bbfd2bd4"
-  },
   "pre_existing_changes": [],
   "assumptions": [
     "Derived from requirement_alignment.assumptions (see above)"
