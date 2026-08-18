@@ -224,6 +224,8 @@
       "gate_rationale": "All iterations complete: environment + smoke, data prep, WLI pruning, distillation, evaluation, end-to-end pipeline. Real-data result: teacher WER 0.32 -> pruned 1.0 -> distilled 0.41, RTF x3.2."
     }
   ],
+  "pr_url": "https://github.com/ml-inory/SPADE/pull/13",
+  "pr_created_at": "2026-08-18",
   "pre_existing_changes": [],
   "assumptions": [
     "Derived from requirement_alignment.assumptions (see above)"
