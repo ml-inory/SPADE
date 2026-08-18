@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -46,14 +47,22 @@ def evaluate(config: EvalConfig) -> dict:
 
     wers, rtfs = [], []
     for sample in samples:
-        start = time.perf_counter()
-        speech = synthesize(
-            cosyvoice, sample["text"], sample["prompt_text"], sample["prompt_wav"]
-        )
-        elapsed = time.perf_counter() - start
-        wers.append(scorer.score_speech(speech, sample["text"]))
-        audio_seconds = speech.shape[1] / cosyvoice.sample_rate
-        rtfs.append(elapsed / audio_seconds)
+        try:
+            start = time.perf_counter()
+            speech = synthesize(
+                cosyvoice, sample["text"], sample["prompt_text"], sample["prompt_wav"]
+            )
+            elapsed = time.perf_counter() - start
+            wers.append(scorer.score_speech(speech, sample["text"]))
+            audio_seconds = speech.shape[1] / cosyvoice.sample_rate
+            rtfs.append(elapsed / audio_seconds)
+        except Exception as exc:  # degenerate output: count as fully wrong
+            print(
+                f"[eval] sample {sample['utt']} failed ({type(exc).__name__}); WER=1.0",
+                file=sys.stderr,
+            )
+            wers.append(1.0)
+            rtfs.append(0.0)
 
     metrics = {
         "wer": round(float(np.mean(wers)), 4),

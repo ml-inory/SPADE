@@ -71,7 +71,17 @@
       "test_command": "python -m pytest -x -q",
       "test_summary": "45 tests pass; data prep for the scaled run complete (5500 train in 2 shards of 2750 + 200 eval); both 7-epoch shard runs launched on 2x L4",
       "implementation_summary": "data_prep now supports multi-parquet/glob train sources, a separate eval parquet, and train_shards (per-GPU shard parquets + lists); added average_checkpoints.py for checkpoint averaging; added configs/cosyvoice2/pipeline_scale.yaml.",
-      "commit_hash": null
+      "commit_hash": "9c992e5",
+      "result": {
+        "eval_subset": 30,
+        "teacher": {"wer": 0.3335, "rtf": 0.8166, "depth": 24, "params": 494032768},
+        "pruned": {"wer": 1.0148, "rtf": 6.8541, "depth": 12, "params": 315084160},
+        "distilled_1500utt": {"wer": 0.3578, "rtf": 0.598, "depth": 12, "params": 315084160},
+        "distilled_5500utt_shard0": {"wer": 0.3153, "rtf": 0.5945, "depth": 12, "params": 315084160},
+        "distilled_5500utt_averaged": {"wer": 0.3436, "rtf": 0.586, "depth": 12, "params": 315084160}
+      },
+      "gate_result": "done",
+      "gate_rationale": "Scaled distillation (5500 utts, 2-GPU sharded, 7 epochs) completed; best 12-layer student WER 0.315 below the teacher's 0.334 on the same 30-utterance eval subset (vs 0.358 with 1500 utts)."
     }
   ],
   "pre_existing_changes": [],

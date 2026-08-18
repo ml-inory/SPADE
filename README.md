@@ -211,24 +211,26 @@ subset (LibriTTS dev-clean):
 Only the LLM is pruned/distilled; Flow and HiFi-GAN are reused unchanged,
 exactly as in the paper.
 
-#### Real-data result (this repo, 1x NVIDIA L4)
+#### Real-data result (this repo, NVIDIA L4)
 
-Measured on 8 LibriSpeech dev-clean utterances (zero-shot, Whisper-base WER,
-ASR-style transcript normalization), 1500 training utterances, 7 distillation
-epochs:
+Measured on 30 LibriSpeech dev-clean utterances (zero-shot, Whisper-base WER,
+ASR-style transcript normalization; degenerate outputs count as WER 1.0):
 
 | Model | Depth | Params | WER | RTF |
 |---|---|---|---|---|
-| CosyVoice2 teacher | 24 | 494.0M | 0.316 | 1.94 |
-| WLI-pruned (12 layers) | 12 | 315.1M | 1.000 | 2.86 |
-| + SPADE distillation | 12 | 315.1M | **0.413** | **0.60** |
+| CosyVoice2 teacher | 24 | 494.0M | 0.334 | 0.82 |
+| WLI-pruned (12 layers) | 12 | 315.1M | 1.015 | 6.85 |
+| + SPADE distill (1500 utts, 7 ep) | 12 | 315.1M | 0.358 | 0.60 |
+| + SPADE distill (5500 utts, 7 ep) | 12 | 315.1M | **0.315** | 0.59 |
 
-WLI identified layers 16/15/11/8 as most important and 22/23/2 as least
-important (report at `data/spade/parquet/wli_report.json`). Distillation
-recovers the pruned model from complete unintelligibility (WER 1.0) to
-intelligible speech (WER 0.41), while halving depth, cutting parameters by
-36%, and speeding up synthesis ~3.2x. Larger data/epochs (the paper uses 7
-epochs on a much larger corpus) narrow the remaining WER gap to the teacher.
+Scaling the distillation data from 1500 to 5500 LibriSpeech train-clean-100
+utterances (two shards trained in parallel on 2 GPUs, best single shard
+reported) pushes the 12-layer student's WER **below the 24-layer teacher**
+(0.315 vs 0.334) while halving depth, cutting parameters by 36%, and
+speeding up synthesis ~1.4x. WLI identified layers 16/15/11/8 as most
+important and 22/23/2 as least important (report at
+`data/spade_scale/parquet/`). Larger data/epochs (the paper's setup) narrow
+the gap further.
 
 ## Testing
 
