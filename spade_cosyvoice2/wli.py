@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -83,7 +84,13 @@ class CosyVoice2WERScorer:
         text = self.whisper.transcribe(
             speech[0].numpy().astype(np.float32), fp16=False
         )["text"].strip()
-        return word_error_rate(reference, text)
+        return word_error_rate(normalize_transcript(reference), normalize_transcript(text))
+
+
+def normalize_transcript(text: str) -> str:
+    """ASR-style normalization: lowercase, collapse punctuation/whitespace."""
+    text = re.sub(r"[^a-z0-9\s']", " ", text.lower())
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def run_wli(config: WLIConfig) -> dict:

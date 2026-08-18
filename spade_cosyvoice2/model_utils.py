@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import torch
 from torch.utils.data import DataLoader
 
@@ -22,8 +24,24 @@ def load_configs(model_dir: str):
 
 def build_llm(configs, device: str | torch.device, llm_pt: str | None = None,
               retained: list[int] | None = None):
-    """Construct a Qwen2LM from configs and load a (possibly pruned) llm.pt."""
-    llm = configs["llm"]
+    """Construct an independent Qwen2LM and load a (possibly pruned) llm.pt.
+
+    The configs' ``llm`` instance is deep-copied per call so that the teacher
+    and the student never share modules. The BlankEN-pretrained Qwen2 inside
+    the copy is replaced by a blank model of the same architecture, since
+    ``llm.pt`` overwrites it anyway.
+    """
+    from transformers import AutoModelForCausalLM
+
+    src = configs["llm"]
+    extractor = getattr(src, "speech_token_extractor", None)
+    src.speech_token_extractor = None  # onnx session is not deepcopy-able
+    try:
+        llm = deepcopy(src)
+    finally:
+        src.speech_token_extractor = extractor
+    qwen_config = deepcopy(llm.llm.model.config)
+    llm.llm.model = AutoModelForCausalLM.from_config(qwen_config)
     if retained is not None:
         shrink_qwen2_for_llm(llm, retained)
     if llm_pt is not None:
@@ -84,15 +102,16 @@ def spade_forward(llm, batch: dict, device: str | torch.device) -> dict:
     # HF includes the embedding output at index 0; strip it so the list
     # follows SPADE's convention: [post-block 0 .. n-1].
     hidden_states = list(outs.hidden_states)[1:]
+    lm_target = lm_target.to(device)
     return {
         "logits": llm.llm_decoder(outs.hidden_states[-1]),
         "hidden_states": hidden_states,
         "attentions": list(outs.attentions),
         "embedding_out": outs.hidden_states[0],
-        "lm_target": lm_target.to(device),
+        "lm_target": lm_target,
         "lm_target_masked": torch.where(
             lm_target == -1, torch.tensor(-100, device=device), lm_target
-        ).to(device),
+        ),
     }
 
 

@@ -1,0 +1,33 @@
+# End-to-end SPADE-on-CosyVoice2: data -> WLI -> prune -> distill -> evaluate.
+# Run: python -m spade_cosyvoice2.run_pipeline --config configs/cosyvoice2/pipeline.yaml
+# Expected runtime: data ~5-10 min (download+extract), WLI ~15-20 min,
+# distill ~10-20 min on 2x NVIDIA L4.
+model_dir: ""              # default: <cosyvoice_root>/pretrained_models/CosyVoice2-0.5B
+out_dir: ""                # default: <model_dir>/../spade_outputs
+data:
+  part: dev-clean
+  num_utts: 200
+  train_utts: 150
+  num_threads: 8
+  seed: 0
+wli:
+  subset_size: 8
+  whisper_model: base
+  device: auto
+prune:
+  target_layers: 12
+  force_keep_first_last: true
+distill:
+  epochs: 1
+  lr: 0.00001
+  accum_grad: 2
+  alpha: 0.25
+  beta: 0.1
+  matching: dynamic
+  device: auto
+  log_every: 10
+eval:
+  subset_size: 8
+  whisper_model: base
+  device: auto
+

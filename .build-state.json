@@ -99,6 +99,16 @@
         "Layers restored after each leave-one-out run"
       ],
       "url": "https://github.com/ml-inory/SPADE/issues/10"
+    },
+    {
+      "number": 11,
+      "title": "feat[cv2-5]: SPADE distillation training + evaluation on CosyVoice2",
+      "acceptance_checks": [
+        "spade_cosyvoice2/distill.py trains the pruned student against the frozen teacher with the SPADE loss and saves a CosyVoice-loadable checkpoint",
+        "spade_cosyvoice2/evaluate.py reports WER (Whisper), RTF, params, depth",
+        "Distilled model WER recovers substantially vs the pruned model (verified on real data)"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/11"
     }
   ],
   "rounds": [
@@ -161,6 +171,26 @@
       "test_command": "python -m pytest -x -q",
       "test_summary": "45 tests pass; WLI computed on the real CosyVoice2 LLM over 8 LibriSpeech dev-clean eval utterances (24 layers, ~45 min on 1x L4): top layers 16(1.438),15(1.397),11(1.265),8(1.156); bottom 22(0.354),23(0.367),2(0.419)",
       "implementation_summary": "wli.py: leave-one-out WER per Qwen2 layer (bypass_block zeroing -> zero-shot synthesis -> Whisper base transcription -> word_error_rate), report JSON next to the eval list, layers restored after each run. Verified on the official checkpoint.",
+      "commit_hash": null
+    },
+    {
+      "iteration": 5,
+      "issue": 11,
+      "changed_files": [
+        "spade_cosyvoice2/distill.py",
+        "spade_cosyvoice2/evaluate.py",
+        "spade_cosyvoice2/run_pipeline.py",
+        "spade_cosyvoice2/model_utils.py",
+        "spade_cosyvoice2/wli.py",
+        "configs/cosyvoice2/distill.yaml",
+        "configs/cosyvoice2/pipeline.yaml",
+        "README.md",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "45 tests pass; real-data distillation result on 8 LibriSpeech dev-clean eval utterances (1500 train utts, 7 epochs, bf16 on 1x L4): teacher WER 0.3164 / RTF 1.94 / 494M params / 24 layers -> pruned (WLI top-12) WER 1.0 -> distilled WER 0.4127 / RTF 0.60 / 315M params / 12 layers",
+      "implementation_summary": "distill.py: SPADE composite loss training (teacher frozen, dynamic matching, per-component losses) with bf16 AMP, periodic checkpoints and resume; evaluate.py: Whisper WER (with ASR-style transcript normalization), RTF, params, depth. Fixed shared-config deepcopy issue in build_llm. Verified end-to-end on the official CosyVoice2 checkpoint.",
       "commit_hash": null
     }
   ],

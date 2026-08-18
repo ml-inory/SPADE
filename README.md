@@ -181,6 +181,36 @@ The framework is backbone-agnostic. To run the paper's setups:
    turns it into an identity (safe leave-one-out evaluation); the HF trainer
    reuses the exact SPADE losses on HF `hidden_states`/`attentions`.
 
+### CosyVoice 2 (built-in integration)
+
+The paper's headline backbone is supported end-to-end through
+`spade_cosyvoice2/` (requires the official CosyVoice repository and the
+CosyVoice2-0.5B checkpoint, prepared by `spade_cosyvoice2/setup.sh`):
+
+```bash
+./spade_cosyvoice2/setup.sh                          # CosyVoice repo + deps + checkpoint
+python -m spade_cosyvoice2.smoke --out outputs/cosyvoice2/smoke.wav   # verify synthesis
+python -m spade_cosyvoice2.run_pipeline --config configs/cosyvoice2/pipeline.yaml
+```
+
+The pipeline runs the paper's CosyVoice2 experiment on a small real-speech
+subset (LibriTTS dev-clean):
+
+1. **Data prep** (`data_prep.py`): downloads LibriTTS dev-clean, extracts
+   campplus speaker embeddings and 25 Hz speech tokens
+   (`speech_tokenizer_v2.onnx`), writes CosyVoice parquet shards;
+2. **WLI** (`wli.py`): leave-one-out WER over the 24 Qwen2 layers
+   (each layer bypassed by zeroing, synthesis + Whisper transcription);
+3. **Prune** (`prune_llm.py`): 24 -> 12 layers via state-dict remapping;
+4. **Distill** (`distill.py`): SPADE composite loss (CE + Skew-KL logits +
+   latent/attention/embedding MSE, dynamic layer matching) with the frozen
+   teacher, on the small subset;
+5. **Evaluate** (`evaluate.py`): WER (Whisper), RTF, parameters, depth for
+   teacher / pruned / distilled checkpoints.
+
+Only the LLM is pruned/distilled; Flow and HiFi-GAN are reused unchanged,
+exactly as in the paper.
+
 ## Testing
 
 ```bash
