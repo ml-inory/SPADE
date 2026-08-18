@@ -1,0 +1,36 @@
+# Scaled SPADE-on-CosyVoice2 run: ~5500 train utterances (LibriSpeech
+# train-clean-100) split across 2 GPUs (2 shards x 7 epochs), then averaged.
+# Eval: 200 LibriSpeech dev-clean utterances.
+# Expected runtime: data ~15 min, WLI ~45 min, distill ~2x ~70 min in
+# parallel on 2x NVIDIA L4, eval ~10 min.
+model_dir: ""
+out_dir: ""
+data:
+  hf_parquet: /data/yangrongzhao/Research/CosyVoice-main/data/train_clean_100/*.parquet
+  eval_hf_parquet: /data/yangrongzhao/Research/CosyVoice-main/data/librispeech_dev_clean.parquet
+  num_utts: 5500
+  train_utts: 5500
+  eval_utts: 200
+  train_shards: 2
+  num_threads: 12
+  seed: 0
+wli:
+  subset_size: 8
+  whisper_model: base
+  device: auto
+prune:
+  target_layers: 12
+  force_keep_first_last: true
+distill:
+  epochs: 7
+  lr: 0.00001
+  accum_grad: 2
+  alpha: 0.25
+  beta: 0.1
+  matching: dynamic
+  device: auto
+  log_every: 50
+eval:
+  subset_size: 12
+  whisper_model: base
+  device: auto
