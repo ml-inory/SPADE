@@ -56,32 +56,48 @@ def compute_wli(
     model: LLMTTSBackbone,
     scorer: Callable[[LLMTTSBackbone, dict], float],
     samples: Sequence[dict],
+    bypass_fn: Optional[Callable] = None,
+    n_layers: Optional[int] = None,
     show_progress: bool = False,
 ) -> np.ndarray:
     """Leave-one-out WER-based layer importance.
 
     For each layer, temporarily bypass it, score every evaluation sample with
     ``scorer`` (WER per sample), and average. Layers are restored afterwards.
+
+    ``bypass_fn`` is an optional ``contextmanager(model, layer_index)`` that
+    temporarily neutralizes a layer (e.g. :func:`spade.adapters.hf.bypass_block`
+    for Hugging Face backbones); when omitted, the built-in backbone's
+    :meth:`LLMTTSBackbone.disable_blocks` is used. ``n_layers`` overrides the
+    layer count for backbones whose config uses a different attribute name.
     """
     model.eval()
-    n_layers = model.config.n_layer
+    n = n_layers if n_layers is not None else model.config.n_layer
     if hasattr(scorer, "score"):
         scorer = scorer.score  # type: ignore[assignment]
-    wli = np.zeros(n_layers, dtype=np.float64)
-    iterator = range(n_layers)
+    wli = np.zeros(n, dtype=np.float64)
+    iterator = range(n)
     if show_progress:
         from tqdm import tqdm
 
         iterator = tqdm(iterator, desc="WLI (leave-one-out)")
 
     for i in iterator:
-        model.disable_blocks([i])
         wers: list[float] = []
-        with torch.no_grad():
-            for sample in samples:
-                wers.append(float(scorer(model, sample)))
+        if bypass_fn is not None:
+            with bypass_fn(model, i):
+                with torch.no_grad():
+                    for sample in samples:
+                        wers.append(float(scorer(model, sample)))
+        else:
+            model.disable_blocks([i])
+            try:
+                with torch.no_grad():
+                    for sample in samples:
+                        wers.append(float(scorer(model, sample)))
+            finally:
+                model.enable_all_blocks()
         wli[i] = float(np.mean(wers))
-        model.enable_all_blocks()
     return wli
 
 

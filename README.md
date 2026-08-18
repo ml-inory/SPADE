@@ -159,10 +159,27 @@ The framework is backbone-agnostic. To run the paper's setups:
    `codes -> waveform` and use `WhisperWERScorer`
    (`spade/evaluation/scorers.py`), which transcribes generated audio and
    computes WER against the transcript.
-3. **Backbones**: `prune_layers` / the distillation trainer operate on any
-   residual Transformer exposing per-block hidden states and attention maps
-   with the same interface as `spade.models.LLMTTSBackbone`; adapters for
-   Hugging Face-style `ModuleList` stacks are a drop-in extension point.
+3. **Backbones**: Hugging Face-style residual stacks (GPT-2 pattern, and the
+   same `ModuleList` layout used by LLaMA / Qwen / CosyVoice 2 / LLaSA) are
+   supported out of the box via `spade/adapters/hf.py`
+   (`pip install -e ".[hf]"`):
+
+   ```python
+   from spade.adapters.hf import HFDistillTrainer, bypass_block, n_layers, prune_hf_layers
+   from spade.distill import DistillationConfig
+   from spade.pruning import compute_wli
+
+   student = prune_hf_layers(teacher, retained_indices)          # copy retained blocks
+   wli = compute_wli(teacher, wer_scorer, samples,               # leave-one-out WLI
+                     bypass_fn=bypass_block, n_layers=n_layers(teacher))
+   trainer = HFDistillTrainer(teacher, student, DistillationConfig(matching="dynamic"))
+   history = trainer.train(loader)                               # SPADE composite loss
+   ```
+
+   `prune_hf_layers` rebuilds the model with fewer layers by remapping
+   state-dict keys; `bypass_block` zeroes a block so the residual structure
+   turns it into an identity (safe leave-one-out evaluation); the HF trainer
+   reuses the exact SPADE losses on HF `hidden_states`/`attentions`.
 
 ## Testing
 

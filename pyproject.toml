@@ -23,6 +23,7 @@ audio = [
     "soundfile>=0.12",
     "librosa>=0.10",
 ]
+hf = ["transformers>=4.40"]
 wer = ["openai-whisper>=20231117"]
 dev = ["pytest>=8.0"]
 
@@ -32,4 +33,3 @@ include = ["spade*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-
