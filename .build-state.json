@@ -84,6 +84,8 @@
       "gate_rationale": "Scaled distillation (5500 utts, 2-GPU sharded, 7 epochs) completed; best 12-layer student WER 0.315 below the teacher's 0.334 on the same 30-utterance eval subset (vs 0.358 with 1500 utts)."
     }
   ],
+  "pr_url": "https://github.com/ml-inory/SPADE/pull/15",
+  "pr_created_at": "2026-08-18",
   "pre_existing_changes": [],
   "assumptions": [
     "Derived from requirement_alignment.assumptions (see above)"
