@@ -234,6 +234,13 @@ important and 22/23/2 as least important (report at
 `data/spade_scale/parquet/`). Larger data/epochs (the paper's setup) narrow
 the gap further.
 
+RTF conclusion: end-to-end synthesis (LLM + Flow + HiFi-GAN, single L4,
+batch=1) improves from 0.82 (teacher) to ~0.59 (12-layer distilled), about
+1.37-1.39x faster. Only the LLM is pruned (24->12 layers), so the LLM's
+~2x gain is diluted by the unchanged Flow/vocoder; the paper's 1.7x RTF
+figure includes streaming/JIT optimizations and a different measurement
+setup.
+
 ## Testing
 
 ```bash
