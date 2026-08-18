@@ -74,6 +74,17 @@
         "Pruning + selection + scorer have passing pytest tests"
       ],
       "url": "https://github.com/ml-inory/SPADE/issues/2"
+    },
+    {
+      "number": 3,
+      "title": "feat[3]: Adaptive multi-level distillation (Skew-KL losses, dynamic layer matching, trainer)",
+      "acceptance_checks": [
+        "spade/distill/losses.py provides CE, Skew KL (DistiLLM forward/reverse, masked), latent/attention/embedding MSE, and the SPADE composite loss (alpha=0.25 default)",
+        "spade/distill/matching.py provides dynamic teacher-layer targets (last layer before next retained; final layer for the last student layer) and the static ablation",
+        "spade/distill/trainer.py trains the student against a frozen teacher with the composite loss and returns per-component metrics",
+        "Losses, matching, and trainer have passing pytest tests (including teacher frozen / student updated)"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/3"
     }
   ],
   "rounds": [
@@ -122,6 +133,23 @@
       "test_command": "python -m pytest -x -q",
       "test_summary": "18 passed (WLI leave-one-out + restore, layer selection with boundary forcing, weight-copy pruning, CLI computation, token-codec WER scorer)",
       "implementation_summary": "Implemented WER-based layer importance (leave-one-out layer bypass scored with WER), cosine-based layer importance baseline, top-k layer selection with optional first/last retention, and a prune_layers utility that builds the student by copying retained teacher blocks. Added TokenCodecWERScorer (generated codes -> text -> WER) and WhisperWERScorer for the real-audio path, plus efficiency metrics.",
+      "commit_hash": null
+    },
+    {
+      "iteration": 3,
+      "issue": 3,
+      "changed_files": [
+        "spade/distill/__init__.py",
+        "spade/distill/losses.py",
+        "spade/distill/matching.py",
+        "spade/distill/trainer.py",
+        "tests/test_distillation.py",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "27 passed (skew-KL forward/reverse/masking, MSE losses, composite weights, dynamic/static matching, distill loss components, trainer updates student and freezes teacher, ablation flags)",
+      "implementation_summary": "Implemented the paper's composite distillation loss (alpha*CE + (1-alpha)/4 * (skew-KL logit + latent MSE + attention MSE + embedding MSE), alpha=0.25) with DistiLLM's skew KL (beta=0.1, forward/reverse), dynamic teacher-layer matching (target = last teacher layer before the next retained layer) plus static ablation, and a DistillTrainer that freezes the teacher and returns per-component metrics.",
       "commit_hash": null
     }
   ],
