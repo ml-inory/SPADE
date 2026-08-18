@@ -1,0 +1,27 @@
+# Adaptive multi-level distillation of the pruned student.
+# ~10 s per epoch on an NVIDIA L4.
+data:
+  num_samples: 3000
+  num_eval_samples: 24
+  num_speakers: 4
+  use_prompt: false
+  max_words: 8
+  max_len: 192
+  seed: 0
+batch_size: 32
+device: auto
+distill:
+  alpha: 0.25
+  beta: 0.1
+  skew_mode: forward
+  use_ce: true
+  use_logit: true
+  use_latent: true
+  use_attention: true
+  use_embedding: true
+  matching: dynamic
+  lr: 0.001
+  weight_decay: 0.01
+  grad_clip: 1.0
+  epochs: 2
+  log_every: 100

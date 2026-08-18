@@ -1,0 +1,62 @@
+# Tiny end-to-end configuration: train -> WLI prune -> distill -> evaluate.
+output_dir: outputs/smoke
+device: auto
+seed: 0
+teacher:
+  data:
+    num_samples: 24
+    num_eval_samples: 8
+    num_speakers: 2
+    use_prompt: false
+    max_words: 5
+    max_len: 128
+    seed: 0
+  model:
+    vocab_size: 512
+    n_layer: 3
+    n_head: 4
+    n_embd: 32
+    max_position_embeddings: 128
+    num_codebooks: 1
+  batch_size: 4
+  epochs: 1
+  lr: 0.001
+  weight_decay: 0.01
+  grad_clip: 1.0
+  log_every: 1000
+prune:
+  target_layers: 2
+  eval_subset_size: 4
+  force_keep_first_last: true
+  compute_cli: true
+  max_new_tokens: 64
+distill:
+  data:
+    num_samples: 24
+    num_eval_samples: 8
+    num_speakers: 2
+    use_prompt: false
+    max_words: 5
+    max_len: 128
+    seed: 0
+  batch_size: 4
+  distill:
+    alpha: 0.25
+    beta: 0.1
+    skew_mode: forward
+    use_ce: true
+    use_logit: true
+    use_latent: true
+    use_attention: true
+    use_embedding: true
+    matching: dynamic
+    lr: 0.001
+    weight_decay: 0.01
+    grad_clip: 1.0
+    epochs: 1
+    log_every: 1000
+eval:
+  subset_size: 4
+  max_new_tokens: 64
+  hop_seconds: 0.08
+  n_runs: 1

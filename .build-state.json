@@ -1,0 +1,247 @@
+{
+  "goal": "Implement SPADE (Structured Pruning and Adaptive Distillation for Efficient LLM-TTS, arXiv:2509.20802, ICASSP 2026) as a runnable research codebase: WER-based layer importance (WLI) pruning plus adaptive multi-level knowledge distillation (Skew-KL logits, latent/attention/embedding MSE, dynamic layer matching) for LLM-TTS backbones.",
+  "stack": "python (torch 2.9 + CUDA available; pytest installed)",
+  "base_branch": "main",
+  "branch": "feat/build-20260818-1020",
+  "iteration": 1,
+  "validation_command": "python -m pytest -x -q",
+  "requirement_alignment": {
+    "source": "Derived from user request ('implement this repo's idea'), the empty README title (SPADE: Structured Pruning and Adaptive Distillation for Efficient LLM-TTS), and the full paper text (arXiv 2509.20802v3) + DistiLLM reference implementation. No blocking question asked because the paper is an unambiguous spec and the user explicitly asked to implement directly.",
+    "goal": "Self-contained, runnable implementation of SPADE: train an LLM-TTS teacher, compute WER-based layer importance, prune low-importance layers, recover via adaptive multi-level distillation, evaluate WER/efficiency.",
+    "non_goals": [
+      "Full reproduction of the paper's CosyVoice 2 / LLaSA benchmarks (requires multi-GPU + LibriHeavy/LibriTTS-scale corpora)",
+      "Deployment, serving, or production operations",
+      "Quantization / other compression methods (out of SPADE scope)"
+    ],
+    "user_visible_behavior": [
+      "CLI commands: train teacher, compute WLI + prune, distill pruned student, evaluate, and one-command end-to-end pipeline",
+      "Built-in synthetic speech-codec benchmark so the whole pipeline runs end-to-end in minutes on available hardware",
+      "Real-data hooks: EnCodec-style discrete-audio token dataset loader and optional Whisper-based WER scorer",
+      "README documenting method, usage, configs, and extension points (CosyVoice 2 / LLaSA)"
+    ],
+    "constraints": [
+      "Minimal external dependencies (torch, numpy, pyyaml, tqdm); optional whisper/torchaudio for real-audio evaluation",
+      "Tests must be fast (small models, synthetic data) and run with pytest",
+      "Preserve the single existing README.md content intent (SPADE title) while expanding it"
+    ],
+    "risks": [
+      "Synthetic codec is a proxy benchmark, not real speech; real-data validation requires the provided adapters and external datasets",
+      "WLI requires autoregressive decoding per layer; cost controlled via small eval subset"
+    ],
+    "acceptance_checks": [
+      "python -m pytest -x -q passes",
+      "End-to-end smoke pipeline (train tiny teacher -> WLI -> prune -> distill -> evaluate) runs and reports WER + efficiency metrics",
+      "README documents method and CLI usage"
+    ],
+    "validation_approach": "pytest unit tests per module plus an end-to-end smoke test on tiny synthetic configuration",
+    "first_iteration_scope": "Project scaffolding (pyproject, package skeleton, .gitignore) + minimal GPT-style LLM-TTS backbone + text tokenizer + synthetic speech-codec data + unit tests",
+    "follow_up_iterations": [
+      "WLI pruning module + cosine baseline + tests",
+      "Adaptive distillation (losses + dynamic matching + trainer) + tests",
+      "CLI wiring (train/prune/distill/evaluate/pipeline), README, end-to-end smoke test, PR"
+    ],
+    "assumptions": [
+      "User wants a faithful, runnable implementation of the paper's method rather than a full benchmark reproduction",
+      "Skew KL uses DistiLLM's skewed-forward-KL formulation (mixed = beta*p + (1-beta)*q, KL(p||mixed), beta=0.1) as in the referenced implementation",
+      "Dynamic layer matching: student layer n distills from teacher layer r_{n+1}-1 (last layer before the next retained layer); last student layer distills from the final teacher layer",
+      "Composite loss alpha = 0.25 per paper",
+      "WLI: leave-one-out layer removal measured on a small evaluation subset with a WER scorer; prune bottom-k, force-keep first and last layer",
+      "GitHub issues/PRs on the private ml-inory/SPADE repo are authorized (gh authenticated as repo owner ml-inory)"
+    ],
+    "open_questions": [
+      "Whether to later add native CosyVoice 2 / LLaSA integration beyond generic HF-transformer hooks (can be a follow-up iteration)"
+    ]
+  },
+  "issues": [
+    {
+      "number": 1,
+      "title": "feat[1]: Project scaffolding, LLM-TTS backbone, and synthetic codec data",
+      "acceptance_checks": [
+        "pyproject.toml, .gitignore, and spade/ package skeleton exist with minimal dependencies",
+        "spade/models/llm_tts.py provides a configurable autoregressive LLM-TTS backbone returning logits + hidden states + attention maps",
+        "spade/data/ provides character tokenizer and synthetic speech-codec dataset decodable back to text",
+        "Model forward/generation and data pipeline have passing pytest unit tests"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/1"
+    },
+    {
+      "number": 2,
+      "title": "feat[2]: WER-based layer importance (WLI) pruning + cosine baseline",
+      "acceptance_checks": [
+        "spade/pruning/ provides compute_wli (leave-one-out WER per layer), compute_cli (mean cosine distance between layer input/output), and layer selection/pruning utilities",
+        "Backbone supports temporarily disabling blocks (leave-one-out) and pruning returns a new student model whose retained blocks copy teacher weights",
+        "WER scorer abstraction: built-in token-codec scorer decoding generated codes to text; optional Whisper-based scorer for real audio",
+        "Pruning + selection + scorer have passing pytest tests"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/2"
+    },
+    {
+      "number": 3,
+      "title": "feat[3]: Adaptive multi-level distillation (Skew-KL losses, dynamic layer matching, trainer)",
+      "acceptance_checks": [
+        "spade/distill/losses.py provides CE, Skew KL (DistiLLM forward/reverse, masked), latent/attention/embedding MSE, and the SPADE composite loss (alpha=0.25 default)",
+        "spade/distill/matching.py provides dynamic teacher-layer targets (last layer before next retained; final layer for the last student layer) and the static ablation",
+        "spade/distill/trainer.py trains the student against a frozen teacher with the composite loss and returns per-component metrics",
+        "Losses, matching, and trainer have passing pytest tests (including teacher frozen / student updated)"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/3"
+    },
+    {
+      "number": 4,
+      "title": "feat[4]: CLI stages, end-to-end pipeline, README, and smoke test",
+      "acceptance_checks": [
+        "Stage CLIs exist: python -m spade.train / spade.prune / spade.distill_cli / spade.evaluate / spade.pipeline",
+        "YAML configs for the built-in benchmark + a tiny smoke configuration",
+        "Pipeline produces a JSON report (WLI/retained indices, WER before/after distillation, params/depth/RTF comparison)",
+        "README documents the method, repo layout, quickstart, and extension points",
+        "End-to-end smoke test (train -> WLI -> prune -> distill -> evaluate) passes under pytest"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/4"
+    },
+    {
+      "number": 5,
+      "title": "feat[5]: Hugging Face backbone adapter (prune, WLI bypass, distillation)",
+      "acceptance_checks": [
+        "spade/adapters/hf.py detects a model's layer ModuleList, prunes layers by state-dict remapping, and supports temporarily bypassing a block (WLI)",
+        "compute_wli accepts a pluggable bypass function so it works for any backbone",
+        "HFDistillTrainer runs the SPADE composite loss on HF-style outputs with dynamic layer matching",
+        "Tests with a locally-constructed tiny GPT-2 (no downloads): pruning correctness, WLI wiring, teacher frozen / student updated"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/5"
+    }
+  ],
+  "rounds": [
+    {
+      "iteration": 1,
+      "issue": 1,
+      "changed_files": [
+        "pyproject.toml",
+        ".gitignore",
+        "spade/__init__.py",
+        "spade/models/__init__.py",
+        "spade/models/llm_tts.py",
+        "spade/data/__init__.py",
+        "spade/data/text_tokenizer.py",
+        "spade/data/toy_codec.py",
+        "spade/data/dataset.py",
+        "spade/metrics/__init__.py",
+        "spade/metrics/wer.py",
+        "tests/test_data.py",
+        "tests/test_model.py",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "11 passed (model forward/generation/causality/multi-codebook, codec roundtrip, dataset collation, WER basics)",
+      "implementation_summary": "Created the spade package with a GPT-style LLM-TTS backbone (causal attention + residual blocks + LM heads, exposing hidden states/attention maps/embedding outputs for distillation) and a data layer with a character tokenizer, an invertible context-dependent synthetic speech codec, and a dataset/collator.",
+      "commit_hash": "2f4cfe2",
+      "gate_result": "continue",
+      "gate_rationale": "Tests passed; assumed user wants the full SPADE implementation (pruning + distillation + CLI + PR) rather than stopping after scaffolding. Recorded as an assumption; user can redirect at any time."
+    },
+    {
+      "iteration": 2,
+      "issue": 2,
+      "changed_files": [
+        "spade/models/llm_tts.py",
+        "spade/data/dataset.py",
+        "spade/evaluation/__init__.py",
+        "spade/evaluation/scorers.py",
+        "spade/evaluation/metrics.py",
+        "spade/pruning/__init__.py",
+        "spade/pruning/wli.py",
+        "tests/test_pruning.py",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "18 passed (WLI leave-one-out + restore, layer selection with boundary forcing, weight-copy pruning, CLI computation, token-codec WER scorer)",
+      "implementation_summary": "Implemented WER-based layer importance (leave-one-out layer bypass scored with WER), cosine-based layer importance baseline, top-k layer selection with optional first/last retention, and a prune_layers utility that builds the student by copying retained teacher blocks. Added TokenCodecWERScorer (generated codes -> text -> WER) and WhisperWERScorer for the real-audio path, plus efficiency metrics.",
+      "commit_hash": null
+    },
+    {
+      "iteration": 3,
+      "issue": 3,
+      "changed_files": [
+        "spade/distill/__init__.py",
+        "spade/distill/losses.py",
+        "spade/distill/matching.py",
+        "spade/distill/trainer.py",
+        "tests/test_distillation.py",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "27 passed (skew-KL forward/reverse/masking, MSE losses, composite weights, dynamic/static matching, distill loss components, trainer updates student and freezes teacher, ablation flags)",
+      "implementation_summary": "Implemented the paper's composite distillation loss (alpha*CE + (1-alpha)/4 * (skew-KL logit + latent MSE + attention MSE + embedding MSE), alpha=0.25) with DistiLLM's skew KL (beta=0.1, forward/reverse), dynamic teacher-layer matching (target = last teacher layer before the next retained layer) plus static ablation, and a DistillTrainer that freezes the teacher and returns per-component metrics.",
+      "commit_hash": null
+    },
+    {
+      "iteration": 4,
+      "issue": 4,
+      "changed_files": [
+        "configs/teacher.yaml",
+        "configs/wli.yaml",
+        "configs/distill.yaml",
+        "configs/smoke.yaml",
+        "configs/demo.yaml",
+        "spade/config_utils.py",
+        "spade/checkpoints.py",
+        "spade/train.py",
+        "spade/prune.py",
+        "spade/distill_cli.py",
+        "spade/evaluate.py",
+        "spade/pipeline.py",
+        "spade/data/dataset.py",
+        "spade/data/toy_codec.py",
+        "spade/evaluation/scorers.py",
+        "spade/models/llm_tts.py",
+        "tests/test_pipeline.py",
+        "tests/test_data.py",
+        "README.md",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "32 passed including the end-to-end smoke pipeline; verified the medium demo config separately on GPU: teacher WER 0.272 -> pruned (4/8 layers, -47% params) WER 0.778 -> distilled WER 0.148, RTF x1.9",
+      "implementation_summary": "Wired all stages into CLI entry points (train / prune / distill_cli / evaluate / pipeline) with YAML configs, checkpoints, and an end-to-end JSON report; rewrote the README. During validation, fixed three benchmark issues: next-token label alignment, speaker conditioning (hidden speaker variable caused generation collapse), and Viterbi maximum-consistency decoding (isolated code errors no longer cascade). The medium demo reproduces the paper's story (WLI ranks boundary layers most important; pruning hurts WER; distillation recovers and exceeds it).",
+      "commit_hash": "541c48d",
+      "gate_result": "continue",
+      "gate_rationale": "All tests pass and the demo reproduces the paper's pruning/distillation story; continue with iter 5 (Hugging Face backbone adapter) so the framework is directly applicable to the paper's CosyVoice 2 / LLaSA-style backbones.",
+      "demo_validation": {
+        "teacher_wer": 0.2717,
+        "pruned_wer": 0.7776,
+        "distilled_wer": 0.1481,
+        "depth_ratio": 2.0,
+        "param_ratio": 1.878,
+        "rtf_ratio": 1.813,
+        "retained_indices": [0, 1, 2, 7],
+        "dynamic_targets": [0, 1, 6, 7]
+      }
+    },
+    {
+      "iteration": 5,
+      "issue": 5,
+      "changed_files": [
+        "spade/adapters/__init__.py",
+        "spade/adapters/hf.py",
+        "spade/pruning/wli.py",
+        "tests/test_hf_adapter.py",
+        "pyproject.toml",
+        "README.md",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "38 passed (HF layer-stack detection, state-dict-remap pruning with weight-copy assertions, zero-and-restore block bypass, WLI wiring via pluggable bypass_fn, HF distillation trainer with teacher frozen / student updated and dynamic targets)",
+      "implementation_summary": "Added spade/adapters/hf.py: automatic ModuleList detection (transformer.h / model.layers / ...), prune_hf_layers via state-dict key remapping, bypass_block (zeroing a residual block -> exact identity, restored afterwards) for WLI, and HFDistillTrainer that wraps HF outputs into the SPADE hidden/attention/embedding convention and reuses the composite loss. compute_wli now accepts a pluggable bypass_fn + n_layers for any backbone. Validated with a locally constructed tiny GPT-2 (no downloads).",
+      "commit_hash": "3c437b3",
+      "gate_result": "done",
+      "gate_rationale": "All 38 tests pass; the demo reproduces the paper's story; HF adapter makes the framework applicable to the paper's backbones. No further iterations planned for this run."
+    }
+  ],
+  "pr_url": "https://github.com/ml-inory/SPADE/pull/6",
+  "pre_existing_changes": [],
+  "assumptions": [
+    "Derived from requirement_alignment.assumptions (see above)"
+  ]
+}
