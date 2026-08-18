@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spade-llm-tts"
+version = "0.1.0"
+description = "SPADE: Structured Pruning and Adaptive Distillation for Efficient LLM-TTS"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "SPADE contributors" }]
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+    "PyYAML>=6.0",
+    "tqdm>=4.60",
+]
+
+[project.optional-dependencies]
+audio = [
+    "torchaudio>=2.1",
+    "soundfile>=0.12",
+    "librosa>=0.10",
+]
+wer = ["openai-whisper>=20231117"]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["spade*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+

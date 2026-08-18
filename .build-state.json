@@ -1,0 +1,99 @@
+{
+  "goal": "Implement SPADE (Structured Pruning and Adaptive Distillation for Efficient LLM-TTS, arXiv:2509.20802, ICASSP 2026) as a runnable research codebase: WER-based layer importance (WLI) pruning plus adaptive multi-level knowledge distillation (Skew-KL logits, latent/attention/embedding MSE, dynamic layer matching) for LLM-TTS backbones.",
+  "stack": "python (torch 2.9 + CUDA available; pytest installed)",
+  "base_branch": "main",
+  "branch": "feat/build-20260818-1020",
+  "iteration": 1,
+  "validation_command": "python -m pytest -x -q",
+  "requirement_alignment": {
+    "source": "Derived from user request ('implement this repo's idea'), the empty README title (SPADE: Structured Pruning and Adaptive Distillation for Efficient LLM-TTS), and the full paper text (arXiv 2509.20802v3) + DistiLLM reference implementation. No blocking question asked because the paper is an unambiguous spec and the user explicitly asked to implement directly.",
+    "goal": "Self-contained, runnable implementation of SPADE: train an LLM-TTS teacher, compute WER-based layer importance, prune low-importance layers, recover via adaptive multi-level distillation, evaluate WER/efficiency.",
+    "non_goals": [
+      "Full reproduction of the paper's CosyVoice 2 / LLaSA benchmarks (requires multi-GPU + LibriHeavy/LibriTTS-scale corpora)",
+      "Deployment, serving, or production operations",
+      "Quantization / other compression methods (out of SPADE scope)"
+    ],
+    "user_visible_behavior": [
+      "CLI commands: train teacher, compute WLI + prune, distill pruned student, evaluate, and one-command end-to-end pipeline",
+      "Built-in synthetic speech-codec benchmark so the whole pipeline runs end-to-end in minutes on available hardware",
+      "Real-data hooks: EnCodec-style discrete-audio token dataset loader and optional Whisper-based WER scorer",
+      "README documenting method, usage, configs, and extension points (CosyVoice 2 / LLaSA)"
+    ],
+    "constraints": [
+      "Minimal external dependencies (torch, numpy, pyyaml, tqdm); optional whisper/torchaudio for real-audio evaluation",
+      "Tests must be fast (small models, synthetic data) and run with pytest",
+      "Preserve the single existing README.md content intent (SPADE title) while expanding it"
+    ],
+    "risks": [
+      "Synthetic codec is a proxy benchmark, not real speech; real-data validation requires the provided adapters and external datasets",
+      "WLI requires autoregressive decoding per layer; cost controlled via small eval subset"
+    ],
+    "acceptance_checks": [
+      "python -m pytest -x -q passes",
+      "End-to-end smoke pipeline (train tiny teacher -> WLI -> prune -> distill -> evaluate) runs and reports WER + efficiency metrics",
+      "README documents method and CLI usage"
+    ],
+    "validation_approach": "pytest unit tests per module plus an end-to-end smoke test on tiny synthetic configuration",
+    "first_iteration_scope": "Project scaffolding (pyproject, package skeleton, .gitignore) + minimal GPT-style LLM-TTS backbone + text tokenizer + synthetic speech-codec data + unit tests",
+    "follow_up_iterations": [
+      "WLI pruning module + cosine baseline + tests",
+      "Adaptive distillation (losses + dynamic matching + trainer) + tests",
+      "CLI wiring (train/prune/distill/evaluate/pipeline), README, end-to-end smoke test, PR"
+    ],
+    "assumptions": [
+      "User wants a faithful, runnable implementation of the paper's method rather than a full benchmark reproduction",
+      "Skew KL uses DistiLLM's skewed-forward-KL formulation (mixed = beta*p + (1-beta)*q, KL(p||mixed), beta=0.1) as in the referenced implementation",
+      "Dynamic layer matching: student layer n distills from teacher layer r_{n+1}-1 (last layer before the next retained layer); last student layer distills from the final teacher layer",
+      "Composite loss alpha = 0.25 per paper",
+      "WLI: leave-one-out layer removal measured on a small evaluation subset with a WER scorer; prune bottom-k, force-keep first and last layer",
+      "GitHub issues/PRs on the private ml-inory/SPADE repo are authorized (gh authenticated as repo owner ml-inory)"
+    ],
+    "open_questions": [
+      "Whether to later add native CosyVoice 2 / LLaSA integration beyond generic HF-transformer hooks (can be a follow-up iteration)"
+    ]
+  },
+  "issues": [
+    {
+      "number": 1,
+      "title": "feat[1]: Project scaffolding, LLM-TTS backbone, and synthetic codec data",
+      "acceptance_checks": [
+        "pyproject.toml, .gitignore, and spade/ package skeleton exist with minimal dependencies",
+        "spade/models/llm_tts.py provides a configurable autoregressive LLM-TTS backbone returning logits + hidden states + attention maps",
+        "spade/data/ provides character tokenizer and synthetic speech-codec dataset decodable back to text",
+        "Model forward/generation and data pipeline have passing pytest unit tests"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/1"
+    }
+  ],
+  "rounds": [
+    {
+      "iteration": 1,
+      "issue": 1,
+      "changed_files": [
+        "pyproject.toml",
+        ".gitignore",
+        "spade/__init__.py",
+        "spade/models/__init__.py",
+        "spade/models/llm_tts.py",
+        "spade/data/__init__.py",
+        "spade/data/text_tokenizer.py",
+        "spade/data/toy_codec.py",
+        "spade/data/dataset.py",
+        "spade/metrics/__init__.py",
+        "spade/metrics/wer.py",
+        "tests/test_data.py",
+        "tests/test_model.py",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "11 passed (model forward/generation/causality/multi-codebook, codec roundtrip, dataset collation, WER basics)",
+      "implementation_summary": "Created the spade package with a GPT-style LLM-TTS backbone (causal attention + residual blocks + LM heads, exposing hidden states/attention maps/embedding outputs for distillation) and a data layer with a character tokenizer, an invertible context-dependent synthetic speech codec, and a dataset/collator.",
+      "commit_hash": null
+    }
+  ],
+  "pre_existing_changes": [],
+  "assumptions": [
+    "Derived from requirement_alignment.assumptions (see above)"
+  ]
+}
