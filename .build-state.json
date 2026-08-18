@@ -75,6 +75,8 @@
       "gate_result": "done"
     }
   ],
+  "pr_url": "https://github.com/ml-inory/SPADE/pull/17",
+  "pr_created_at": "2026-08-18",
   "pre_existing_changes": [],
   "assumptions": [
     "Derived from requirement_alignment.assumptions (see above)"
