@@ -1,0 +1,6 @@
+# WER-based layer importance over the 24 CosyVoice2 LLM layers.
+eval_list: ""              # filled by run_pipeline (eval.data.list)
+subset_size: 8
+whisper_model: base
+device: auto
+

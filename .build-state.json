@@ -89,6 +89,16 @@
         "Unit test for utterance collection; existing pytest suite passes"
       ],
       "url": "https://github.com/ml-inory/SPADE/issues/9"
+    },
+    {
+      "number": 10,
+      "title": "feat[cv2-4]: WER-based layer importance (WLI) on the CosyVoice2 LLM",
+      "acceptance_checks": [
+        "spade_cosyvoice2/wli.py bypasses each LLM layer (zeroing via spade.adapters.hf.bypass_block), synthesizes eval utterances zero-shot, transcribes with Whisper, and reports per-layer WER",
+        "WLI report JSON written next to the eval list",
+        "Layers restored after each leave-one-out run"
+      ],
+      "url": "https://github.com/ml-inory/SPADE/issues/10"
     }
   ],
   "rounds": [
@@ -137,6 +147,20 @@
       "test_command": "python -m pytest -x -q",
       "test_summary": "45 tests pass; verified data prep on real data: 200 LibriSpeech dev-clean utterances (HF parquet audio bytes) -> flac + campplus embeddings + 25Hz speech tokens -> train(150)/eval(50) parquet; CosyVoice dataset pipeline yields padded batches (text_token 15x14, speech_token 15x65, embeddings 15x192)",
       "implementation_summary": "data_prep.py now supports an HF-parquet source (openslr/librispeech_asr validation.clean) in addition to openslr LibriTTS tarballs; extracts embeddings and speech tokens with CPU onnxruntime and writes CosyVoice-format parquet + data.list splits. Patched torchaudio.load globally to soundfile (torchcodec is broken in this env), fixing both the frontend and the dataset pipeline.",
+      "commit_hash": null
+    },
+    {
+      "iteration": 4,
+      "issue": 10,
+      "changed_files": [
+        "spade_cosyvoice2/wli.py",
+        "configs/cosyvoice2/wli.yaml",
+        ".build-state.json"
+      ],
+      "test_status": "pass",
+      "test_command": "python -m pytest -x -q",
+      "test_summary": "45 tests pass; WLI computed on the real CosyVoice2 LLM over 8 LibriSpeech dev-clean eval utterances (24 layers, ~45 min on 1x L4): top layers 16(1.438),15(1.397),11(1.265),8(1.156); bottom 22(0.354),23(0.367),2(0.419)",
+      "implementation_summary": "wli.py: leave-one-out WER per Qwen2 layer (bypass_block zeroing -> zero-shot synthesis -> Whisper base transcription -> word_error_rate), report JSON next to the eval list, layers restored after each run. Verified on the official checkpoint.",
       "commit_hash": null
     }
   ],
