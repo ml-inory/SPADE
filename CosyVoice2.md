@@ -36,6 +36,141 @@
    原版 Python 推理路径上的实测，口径更保守（论文含流式/JIT 等推理优化），
    量级一致。
 
+### 音质对照实验结论（2026-08 记录，torch 路径）
+
+背景：用户反馈"SPADE + DSFlow 后音频效果变差"。用受控对照实验在 **torch
+路径**上定位劣化来源（不涉及 NPU/DSFlow）。脚本：
+`python -m spade_cosyvoice2.eval_ablation --config configs/cosyvoice2/ablation_torch.yaml`
+（每个条件保存 wav 供试听）。
+
+8 句 LibriSpeech dev-clean 实测（Whisper-base WER；avg_logprob/no_speech 为
+Whisper 转写置信度，越低/越高越可疑）：
+
+| 条件 | WER | avg_logprob | no_speech | RTF |
+|---|---:|---:|---:|---:|
+| teacher_s10（黄金标准） | 0.351 | **-0.62** | **0.04** | 1.12 |
+| teacher_s20 | 0.353 | -0.76 | 0.06 | 1.14 |
+| distilled_s10 | 0.334 | -0.64 | 0.12 | 0.89 |
+| distilled_s20 | 0.402 | -1.26 | 0.10 | 1.17 |
+| distilled_s30 | 0.376 | -1.26 | 0.15 | 1.24 |
+
+结论：
+
+1. **多步 Flow（20/30 步）不是音质修复方向**：WER 不下降、Whisper 置信度
+   反而变差（distilled -0.64 → -1.26），RTF 线性上涨；
+2. **SPADE 蒸馏 LLM 本身（默认 10 步）可懂度不劣于 teacher**（WER 0.334 vs
+   0.351，与 30 句评估一致），置信度接近（-0.64 vs -0.62），但
+   no_speech 偏高（0.12 vs 0.04），且**存在个别坏样本**（如某句 WER 0.83 vs
+   teacher 0.42）——听感差的来源更可能是这类坏样本或 NPU/DSFlow 路径；
+3. 若目标是在 torch 端继续提升音质：优先加大蒸馏数据/轮次压坏样本，而不是
+   调 Flow 步数。
+
+#### 频谱对比（DTW 对齐 log-mel vs 真实参考音频，2026-08 补充）
+
+评估句就是 LibriSpeech 原声（同说话人同文本），可直接做频谱保真对比。
+指标：mel L2（越低越接近参考）、谱收敛（spec convergence，越低越好）。
+脚本：`python -m spade_cosyvoice2.compare_spectra --eval-list <eval.data.list>
+--out-dir outputs/cosyvoice2/ablation_torch`，并排频谱图输出到
+`out_dir/spectra/`。
+
+| 条件 | mel_l2 | spec_conv |
+|---|---:|---:|
+| teacher_s10（黄金标准） | **18.68** | **0.353** |
+| teacher_s20 | 19.17 | 0.358 |
+| distilled_s10 | 19.25 | 0.358 |
+| distilled_s20 | 19.74 | 0.374 |
+| distilled_s30 | 20.08 | 0.376 |
+
+补充结论：
+
+1. **teacher 的频谱最接近真实参考**；蒸馏模型平均只差 ~0.6 mel L2（+3%），
+   是真实存在但很小的频谱偏移——这正是 WER 测不出的"音质变差"部分；
+2. 该偏移**高度集中在坏样本**（某句 distilled 23.3 vs teacher 18.8，
+   与它 WER 0.83 对应），其余句子基本持平甚至更近；
+3. **多步 Flow 让频谱逐级变差**（distilled 19.25 → 19.74 → 20.08），再次
+   确认调步数不是修复方向。
+
+#### 百炼（qwen-vl-max）频谱图视觉分析（2026-08 补充）
+
+用 DashScope 多模态 API 直接"看"频谱图（工具：`scripts/vision_ask.py`，
+凭证读 `~/.config/agent-vision-toolkit/env` 或 `VISION_*` 环境变量）。
+
+坏样本（1462-170142-0026）结论：
+
+- **teacher_s10**：与真实参考最接近，高频细节完整、能量分布一致（5/5 星）；
+- **distilled_s10**：能量前段偏弱、出现**谱洞**（共振峰断裂，听感"空洞/断续"）、
+  **高频细节缺失**、辅音过渡处**毛刺状噪声**（3/5 星）——与"音频变差"的主观
+  感受一致；
+- **distilled_s30（30 步 Flow）**：能量分布略改善，但引入**周期性伪影、共振峰
+  漂移、静音块、振荡**等新人工痕迹（2/5 星），自然度反而更差。
+
+好样本（652-129742-0001）结论：蒸馏版频谱更平滑、能量更均匀、更接近真实参考
+（与 mel L2 8.43 vs 19.15 一致）。
+
+**总判断**：SPADE 蒸馏的音质退化是**逐句依赖**的（8 句里 5 句退化、2 句改善），
+退化形态为谱洞/高频丢失/辅音毛刺；多步 Flow 不能修复，反而引入新伪影。
+
+### 责任归因（到底是谁的问题，2026-08 记录）
+
+用两个实验把责任拆到 LLM 与 Flow/声码器（脚本：
+`python -m spade_cosyvoice2.attribution --config <config>`）：
+
+1. **GT-token 重建**：把评估句的**真实参考 speech token** 直接喂给
+   Flow + HiFi-GAN 重建音频（绕过 LLM），再与真实原声做频谱对比；
+2. **LLM token 误差率（TER）**：teacher / 蒸馏 LLM 生成的 token 与参考
+   token 的编辑距离。
+
+频谱距离（mel L2，越低越接近真实原声）：
+
+| 条件 | mel_l2 | spec_conv |
+|---|---:|---:|
+| **GT-token 重建（真实 token → Flow → 声码器）** | **11.75** | **0.224** |
+| teacher_s10（24 层 LLM → Flow → 声码器） | 18.68 | 0.353 |
+| distilled_s10（12 层 LLM → Flow → 声码器） | 19.25 | 0.358 |
+
+结论：
+
+1. **Flow + 声码器不是问题**：用真实 token 重建的音频频谱距离仅 11.75，
+   远小于任何 LLM 合成（18.7-19.3）——Flow/HiFi-GAN 的保真度很高；
+2. **主要差距来自 LLM 的 token 生成**：即使原版 teacher，也比 GT-token
+   重建差约 +6.9 mel L2（重述本身就有韵律/内容差异）；
+3. **SPADE 蒸馏是第二位的、真实的劣化源**：比 teacher 再多 +0.6 mel L2，
+   视觉上表现为谱洞/高频丢失/辅音毛刺（5/8 句变差）；
+4. **原始 TER（编辑距离）不是可靠指标**：逐句 TER 与频谱质量不一致
+   （如某句 TER 更低但频谱更差），因为重述本就不必逐 token 相同，真正
+   有害的是少数引发可闻伪影的坏 token；
+5. 对 NPU/DSFlow 的排查建议：把同一归因实验搬到板端——用真实 token 走
+   DSFlow 重建，若频谱距离也远高于 torch 的 11.75，则 DSFlow 自身有损；
+   否则问题集中在 LLM 端。
+
+### DSFlow NPU 板端对照测试（2026-08-25，AX650N 10.126.35.166）
+
+目标：**只用板上 DSFlow 蒸馏后的 NPU 模型**（真实参考 token → DSFlow 1 步
+estimator axmodel → HiFi-GAN），看它单独的音质是否就差。完全绕过 LLM。
+
+6 句 LibriSpeech dev-clean（真实 token，同说话人 prompt）频谱距离
+（mel L2，越低越接近真实原声）：
+
+| 条件 | mel_l2 | 说明 |
+|---|---:|---|
+| torch 原版 10 步 flow，完整 prompt（GT token） | 11.75 | 流程底线 |
+| torch 原版 10 步 flow，prompt 截断 75 token | 13.36 | prompt 截断代价 ≈ +1.6 |
+| torch DSFlow 学生 fp32，prompt 截断 75 token | 14.96 | DSFlow 蒸馏代价 ≈ +1.6 |
+| **板上 DSFlow NPU（INT8），prompt 截断 75 token** | **18.20** | **NPU/部署代价 ≈ +3.2** |
+
+结论：
+
+1. **板上 DSFlow 单独就有明确音质损失**：即使用满分真实 token，其频谱距离
+   （18.20）已经和"teacher LLM 全部劣化"（18.68）同一量级；
+2. 拆解三个因素：prompt 截断 +1.6、DSFlow 1 步蒸馏 +1.6、
+   **NPU INT8 量化/部署是最大单项 +3.2**；
+3. 另外 DSFlow 学生输出电平明显偏低（RMS 约为原版 1/2~1/3），听感偏"虚/闷"；
+4. 因此"SPADE + DSFlow 后音质变差"是**两头叠加**：SPADE LLM 有次级劣化，
+   DSFlow（含 NPU 量化）同样有真实劣化，两者相加才造成明显听感下降。
+
+试听：`outputs/cosyvoice2/dsflow_npu_test/{board_dsflow,torchds_p75,torch10_p75}/*.wav`
+（同一句三个条件可同句对比）。
+
 ---
 
 ## 1. 原理一句话版

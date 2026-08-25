@@ -1,0 +1,34 @@
+# Torch-side controlled ablation: isolate SPADE-LLM vs Flow-step effects.
+#
+# Golden standard = teacher (24L) with the default 10 flow steps.
+# Fill in the checkpoint paths from your reproduction run:
+#   teacher   -> <model_dir>/llm.pt            (retained: [])
+#   distilled -> <repro_work_dir>/distilled_avg.pt (retained: <WLI selection>)
+# Wavs are saved under out_dir/<condition>/ for listening.
+eval_list: ""            # e.g. <cosyvoice_root>/data/spade_repro/parquet/eval.data.list
+subset_size: 8
+whisper_model: base
+model_dir: ""
+device: auto
+out_dir: outputs/cosyvoice2/ablation_torch
+conditions:
+  - name: teacher_s10
+    llm_pt: ""           # default: <model_dir>/llm.pt
+    retained: []
+    flow_steps: 10
+  - name: teacher_s20
+    llm_pt: ""
+    retained: []
+    flow_steps: 20
+  - name: distilled_s10
+    llm_pt: outputs/cosyvoice2/scale/distilled_shard0.pt
+    retained: [0, 1, 4, 7, 8, 10, 11, 12, 15, 16, 19, 23]
+    flow_steps: 10
+  - name: distilled_s20
+    llm_pt: outputs/cosyvoice2/scale/distilled_shard0.pt
+    retained: [0, 1, 4, 7, 8, 10, 11, 12, 15, 16, 19, 23]
+    flow_steps: 20
+  - name: distilled_s30
+    llm_pt: outputs/cosyvoice2/scale/distilled_shard0.pt
+    retained: [0, 1, 4, 7, 8, 10, 11, 12, 15, 16, 19, 23]
+    flow_steps: 30
