@@ -110,6 +110,39 @@ Whisper 转写置信度，越低/越高越可疑）：
 **总判断**：SPADE 蒸馏的音质退化是**逐句依赖**的（8 句里 5 句退化、2 句改善），
 退化形态为谱洞/高频丢失/辅音毛刺；多步 Flow 不能修复，反而引入新伪影。
 
+### 责任归因（到底是谁的问题，2026-08 记录）
+
+用两个实验把责任拆到 LLM 与 Flow/声码器（脚本：
+`python -m spade_cosyvoice2.attribution --config <config>`）：
+
+1. **GT-token 重建**：把评估句的**真实参考 speech token** 直接喂给
+   Flow + HiFi-GAN 重建音频（绕过 LLM），再与真实原声做频谱对比；
+2. **LLM token 误差率（TER）**：teacher / 蒸馏 LLM 生成的 token 与参考
+   token 的编辑距离。
+
+频谱距离（mel L2，越低越接近真实原声）：
+
+| 条件 | mel_l2 | spec_conv |
+|---|---:|---:|
+| **GT-token 重建（真实 token → Flow → 声码器）** | **11.75** | **0.224** |
+| teacher_s10（24 层 LLM → Flow → 声码器） | 18.68 | 0.353 |
+| distilled_s10（12 层 LLM → Flow → 声码器） | 19.25 | 0.358 |
+
+结论：
+
+1. **Flow + 声码器不是问题**：用真实 token 重建的音频频谱距离仅 11.75，
+   远小于任何 LLM 合成（18.7-19.3）——Flow/HiFi-GAN 的保真度很高；
+2. **主要差距来自 LLM 的 token 生成**：即使原版 teacher，也比 GT-token
+   重建差约 +6.9 mel L2（重述本身就有韵律/内容差异）；
+3. **SPADE 蒸馏是第二位的、真实的劣化源**：比 teacher 再多 +0.6 mel L2，
+   视觉上表现为谱洞/高频丢失/辅音毛刺（5/8 句变差）；
+4. **原始 TER（编辑距离）不是可靠指标**：逐句 TER 与频谱质量不一致
+   （如某句 TER 更低但频谱更差），因为重述本就不必逐 token 相同，真正
+   有害的是少数引发可闻伪影的坏 token；
+5. 对 NPU/DSFlow 的排查建议：把同一归因实验搬到板端——用真实 token 走
+   DSFlow 重建，若频谱距离也远高于 torch 的 11.75，则 DSFlow 自身有损；
+   否则问题集中在 LLM 端。
+
 ---
 
 ## 1. 原理一句话版

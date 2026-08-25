@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from copy import deepcopy
 
 import torch
@@ -136,20 +137,12 @@ def load_cosyvoice2_with_llm(
     return cosyvoice
 
 
-@torch.no_grad()
-def synthesize(
-    cosyvoice,
-    text: str,
-    prompt_text: str,
-    prompt_wav: str,
-    text_frontend: bool = False,
-    flow_steps: int | None = None,
-) -> torch.Tensor:
-    """Zero-shot synthesis of ``text`` given a prompt; returns the waveform.
+@contextmanager
+def flow_steps_ctx(cosyvoice, flow_steps: int | None):
+    """Temporarily override the Flow matching solver step count.
 
-    ``flow_steps`` optionally overrides the Flow matching solver steps
-    (CosyVoice2 hardcodes ``n_timesteps=10`` in ``flow.py``); a temporary
-    per-call monkeypatch of the decoder is used and restored afterwards.
+    CosyVoice2 hardcodes ``n_timesteps=10`` in ``flow.py``; this context
+    manager monkeypatches the decoder's forward per call and restores it.
     """
     decoder = cosyvoice.model.flow.decoder
     original_forward = decoder.forward
@@ -162,6 +155,67 @@ def synthesize(
             )
 
         decoder.forward = _forward
+    try:
+        yield
+    finally:
+        decoder.forward = original_forward
+
+
+@torch.no_grad()
+def synthesize(
+    cosyvoice,
+    text: str,
+    prompt_text: str,
+    prompt_wav: str,
+    text_frontend: bool = False,
+    flow_steps: int | None = None,
+) -> torch.Tensor:
+    """Zero-shot synthesis of ``text`` given a prompt; returns the waveform."""
+    with flow_steps_ctx(cosyvoice, flow_steps):
+        model_input = cosyvoice.frontend.frontend_zero_shot(
+            text, prompt_text, prompt_wav, cosyvoice.sample_rate, ""
+        )
+        for output in cosyvoice.model.tts(**model_input, stream=False):
+            return output["tts_speech"]
+    raise RuntimeError("no speech generated")
+
+
+@torch.no_grad()
+def synthesize_from_tokens(
+    cosyvoice,
+    tokens: list[int],
+    prompt_text: str,
+    prompt_wav: str,
+    flow_steps: int | None = None,
+) -> torch.Tensor:
+    """Reconstruct audio from given speech tokens through Flow + HiFi-GAN.
+
+    Used for attribution: feeding the *reference* (ground-truth) tokens
+    isolates the Flow/vocoder reconstruction quality from the LLM's token
+    generation quality.
+    """
+    device = cosyvoice.model.device
+    with flow_steps_ctx(cosyvoice, flow_steps):
+        model_input = cosyvoice.frontend.frontend_zero_shot(
+            "", prompt_text, prompt_wav, cosyvoice.sample_rate, ""
+        )
+        token = torch.tensor([tokens], dtype=torch.int32, device=device)
+        token_len = torch.tensor([len(tokens)], dtype=torch.int32, device=device)
+        mel, _ = cosyvoice.model.flow.inference(
+            token=token,
+            token_len=token_len,
+            prompt_token=model_input["flow_prompt_speech_token"].to(device),
+            prompt_token_len=model_input["flow_prompt_speech_token_len"].to(device),
+            prompt_feat=model_input["prompt_speech_feat"].to(device),
+            prompt_feat_len=model_input["prompt_speech_feat_len"].to(device),
+            embedding=model_input["flow_embedding"].to(device),
+            streaming=False,
+            finalize=True,
+        )
+        speech, _ = cosyvoice.model.hift.inference(
+            speech_feat=mel, cache_source=torch.zeros(1, 1, 0, device=device)
+        )
+    return speech
     model_input = cosyvoice.frontend.frontend_zero_shot(
         text, prompt_text, prompt_wav, cosyvoice.sample_rate, ""
     )
