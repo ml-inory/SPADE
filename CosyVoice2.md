@@ -36,6 +36,35 @@
    原版 Python 推理路径上的实测，口径更保守（论文含流式/JIT 等推理优化），
    量级一致。
 
+### 音质对照实验结论（2026-08 记录，torch 路径）
+
+背景：用户反馈"SPADE + DSFlow 后音频效果变差"。用受控对照实验在 **torch
+路径**上定位劣化来源（不涉及 NPU/DSFlow）。脚本：
+`python -m spade_cosyvoice2.eval_ablation --config configs/cosyvoice2/ablation_torch.yaml`
+（每个条件保存 wav 供试听）。
+
+8 句 LibriSpeech dev-clean 实测（Whisper-base WER；avg_logprob/no_speech 为
+Whisper 转写置信度，越低/越高越可疑）：
+
+| 条件 | WER | avg_logprob | no_speech | RTF |
+|---|---:|---:|---:|---:|
+| teacher_s10（黄金标准） | 0.351 | **-0.62** | **0.04** | 1.12 |
+| teacher_s20 | 0.353 | -0.76 | 0.06 | 1.14 |
+| distilled_s10 | 0.334 | -0.64 | 0.12 | 0.89 |
+| distilled_s20 | 0.402 | -1.26 | 0.10 | 1.17 |
+| distilled_s30 | 0.376 | -1.26 | 0.15 | 1.24 |
+
+结论：
+
+1. **多步 Flow（20/30 步）不是音质修复方向**：WER 不下降、Whisper 置信度
+   反而变差（distilled -0.64 → -1.26），RTF 线性上涨；
+2. **SPADE 蒸馏 LLM 本身（默认 10 步）可懂度不劣于 teacher**（WER 0.334 vs
+   0.351，与 30 句评估一致），置信度接近（-0.64 vs -0.62），但
+   no_speech 偏高（0.12 vs 0.04），且**存在个别坏样本**（如某句 WER 0.83 vs
+   teacher 0.42）——听感差的来源更可能是这类坏样本或 NPU/DSFlow 路径；
+3. 若目标是在 torch 端继续提升音质：优先加大蒸馏数据/轮次压坏样本，而不是
+   调 Flow 步数。
+
 ---
 
 ## 1. 原理一句话版

@@ -143,11 +143,31 @@ def synthesize(
     prompt_text: str,
     prompt_wav: str,
     text_frontend: bool = False,
+    flow_steps: int | None = None,
 ) -> torch.Tensor:
-    """Zero-shot synthesis of ``text`` given a prompt; returns the waveform."""
+    """Zero-shot synthesis of ``text`` given a prompt; returns the waveform.
+
+    ``flow_steps`` optionally overrides the Flow matching solver steps
+    (CosyVoice2 hardcodes ``n_timesteps=10`` in ``flow.py``); a temporary
+    per-call monkeypatch of the decoder is used and restored afterwards.
+    """
+    decoder = cosyvoice.model.flow.decoder
+    original_forward = decoder.forward
+    if flow_steps is not None:
+
+        def _forward(mu, mask, n_timesteps, temperature=1.0, spks=None, cond=None, streaming=False):
+            return original_forward(
+                mu, mask, flow_steps, temperature=temperature, spks=spks,
+                cond=cond, streaming=streaming,
+            )
+
+        decoder.forward = _forward
     model_input = cosyvoice.frontend.frontend_zero_shot(
         text, prompt_text, prompt_wav, cosyvoice.sample_rate, ""
     )
-    for output in cosyvoice.model.tts(**model_input, stream=False):
-        return output["tts_speech"]
-    raise RuntimeError("no speech generated")
+    try:
+        for output in cosyvoice.model.tts(**model_input, stream=False):
+            return output["tts_speech"]
+        raise RuntimeError("no speech generated")
+    finally:
+        decoder.forward = original_forward
