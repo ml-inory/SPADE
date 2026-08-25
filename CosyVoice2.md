@@ -65,6 +65,31 @@ Whisper 转写置信度，越低/越高越可疑）：
 3. 若目标是在 torch 端继续提升音质：优先加大蒸馏数据/轮次压坏样本，而不是
    调 Flow 步数。
 
+#### 频谱对比（DTW 对齐 log-mel vs 真实参考音频，2026-08 补充）
+
+评估句就是 LibriSpeech 原声（同说话人同文本），可直接做频谱保真对比。
+指标：mel L2（越低越接近参考）、谱收敛（spec convergence，越低越好）。
+脚本：`python -m spade_cosyvoice2.compare_spectra --eval-list <eval.data.list>
+--out-dir outputs/cosyvoice2/ablation_torch`，并排频谱图输出到
+`out_dir/spectra/`。
+
+| 条件 | mel_l2 | spec_conv |
+|---|---:|---:|
+| teacher_s10（黄金标准） | **18.68** | **0.353** |
+| teacher_s20 | 19.17 | 0.358 |
+| distilled_s10 | 19.25 | 0.358 |
+| distilled_s20 | 19.74 | 0.374 |
+| distilled_s30 | 20.08 | 0.376 |
+
+补充结论：
+
+1. **teacher 的频谱最接近真实参考**；蒸馏模型平均只差 ~0.6 mel L2（+3%），
+   是真实存在但很小的频谱偏移——这正是 WER 测不出的"音质变差"部分；
+2. 该偏移**高度集中在坏样本**（某句 distilled 23.3 vs teacher 18.8，
+   与它 WER 0.83 对应），其余句子基本持平甚至更近；
+3. **多步 Flow 让频谱逐级变差**（distilled 19.25 → 19.74 → 20.08），再次
+   确认调步数不是修复方向。
+
 ---
 
 ## 1. 原理一句话版
