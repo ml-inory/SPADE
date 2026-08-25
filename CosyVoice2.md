@@ -143,6 +143,34 @@ Whisper 转写置信度，越低/越高越可疑）：
    DSFlow 重建，若频谱距离也远高于 torch 的 11.75，则 DSFlow 自身有损；
    否则问题集中在 LLM 端。
 
+### DSFlow NPU 板端对照测试（2026-08-25，AX650N 10.126.35.166）
+
+目标：**只用板上 DSFlow 蒸馏后的 NPU 模型**（真实参考 token → DSFlow 1 步
+estimator axmodel → HiFi-GAN），看它单独的音质是否就差。完全绕过 LLM。
+
+6 句 LibriSpeech dev-clean（真实 token，同说话人 prompt）频谱距离
+（mel L2，越低越接近真实原声）：
+
+| 条件 | mel_l2 | 说明 |
+|---|---:|---|
+| torch 原版 10 步 flow，完整 prompt（GT token） | 11.75 | 流程底线 |
+| torch 原版 10 步 flow，prompt 截断 75 token | 13.36 | prompt 截断代价 ≈ +1.6 |
+| torch DSFlow 学生 fp32，prompt 截断 75 token | 14.96 | DSFlow 蒸馏代价 ≈ +1.6 |
+| **板上 DSFlow NPU（INT8），prompt 截断 75 token** | **18.20** | **NPU/部署代价 ≈ +3.2** |
+
+结论：
+
+1. **板上 DSFlow 单独就有明确音质损失**：即使用满分真实 token，其频谱距离
+   （18.20）已经和"teacher LLM 全部劣化"（18.68）同一量级；
+2. 拆解三个因素：prompt 截断 +1.6、DSFlow 1 步蒸馏 +1.6、
+   **NPU INT8 量化/部署是最大单项 +3.2**；
+3. 另外 DSFlow 学生输出电平明显偏低（RMS 约为原版 1/2~1/3），听感偏"虚/闷"；
+4. 因此"SPADE + DSFlow 后音质变差"是**两头叠加**：SPADE LLM 有次级劣化，
+   DSFlow（含 NPU 量化）同样有真实劣化，两者相加才造成明显听感下降。
+
+试听：`outputs/cosyvoice2/dsflow_npu_test/{board_dsflow,torchds_p75,torch10_p75}/*.wav`
+（同一句三个条件可同句对比）。
+
 ---
 
 ## 1. 原理一句话版
